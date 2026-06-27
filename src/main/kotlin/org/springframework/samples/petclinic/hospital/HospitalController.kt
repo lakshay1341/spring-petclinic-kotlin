@@ -3,23 +3,28 @@ package org.springframework.samples.petclinic.hospital
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
 import java.time.Instant
+import java.util.UUID
 
 /**
- * Increment 1 hospital monitoring thread: admit a pet, push one numeric vital (HR) over plain
- * HTTP, poll it on a page, discharge. No device app, FHIR, WebSocket or alarms yet.
+ * Hospital monitoring HTTP surface. Admit/discharge delegate to AdmissionService (audited ADT);
+ * the vitals push/poll stay a thin direct path on the live admission row — vitals are not ADT events.
  */
 @Controller
-class HospitalController(val admissions: PetAdmissionRepository) {
+class HospitalController(
+    val admissions: PetAdmissionRepository,
+    val admissionService: AdmissionService
+) {
 
     @PostMapping("/pets/{petId}/admit")
-    fun admit(@PathVariable petId: Int): String {
-        if (admissions.findByPetIdAndDischargedAtIsNull(petId) == null) {
-            val admission = PetAdmission()
-            admission.petId = petId
-            admission.admittedAt = Instant.now()
-            admissions.save(admission)
-        }
+    fun admit(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
+        admissionService.admit(petId, correlationId ?: UUID.randomUUID().toString())
         return "redirect:/hospital/$petId"
+    }
+
+    @GetMapping("/hospital")
+    fun ward(model: MutableMap<String, Any>): String {
+        model["admissions"] = admissions.findByDischargedAtIsNull()
+        return "hospital/ward"
     }
 
     @GetMapping("/hospital/{petId}")
@@ -50,11 +55,8 @@ class HospitalController(val admissions: PetAdmissionRepository) {
     }
 
     @PostMapping("/pets/{petId}/discharge")
-    fun discharge(@PathVariable petId: Int): String {
-        admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
-            it.dischargedAt = Instant.now()
-            admissions.save(it)
-        }
+    fun discharge(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
+        admissionService.discharge(petId, correlationId ?: UUID.randomUUID().toString())
         return "redirect:/hospital/$petId"
     }
 }
