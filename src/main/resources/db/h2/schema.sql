@@ -100,6 +100,7 @@ CREATE TABLE vital_samples (
   admission_id INTEGER NOT NULL,
   metric       VARCHAR(20) NOT NULL,
   sample_value INTEGER,
+  observation_id VARCHAR(100) UNIQUE,
   sampled_at   TIMESTAMP NOT NULL
 );
 ALTER TABLE vital_samples ADD CONSTRAINT fk_vital_samples_admissions FOREIGN KEY (admission_id) REFERENCES pet_admissions (id) ON DELETE RESTRICT;

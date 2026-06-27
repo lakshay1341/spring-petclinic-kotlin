@@ -8,6 +8,8 @@ interface PetAdmissionRepository : Repository<PetAdmission, Int> {
 
     fun findByPetIdAndDischargedAtIsNull(petId: Int): PetAdmission?
 
+    fun findByDeviceUuidAndDischargedAtIsNull(deviceUuid: String): PetAdmission?
+
     fun findFirstByPetIdOrderByIdDesc(petId: Int): PetAdmission?
 
     fun findByDischargedAtIsNull(): Collection<PetAdmission>
