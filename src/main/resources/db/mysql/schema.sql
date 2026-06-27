@@ -57,10 +57,63 @@ CREATE TABLE IF NOT EXISTS visits (
 CREATE TABLE IF NOT EXISTS pet_admissions (
   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   pet_id INT(4) UNSIGNED NOT NULL,
+  status VARCHAR(20) NOT NULL,
   admitted_at DATETIME NOT NULL,
   discharged_at DATETIME,
+  ward VARCHAR(80),
+  cage VARCHAR(80),
+  device_uuid VARCHAR(100),
+  responsible_vet_id INT(4) UNSIGNED,
   latest_heart_rate INT,
   last_vital_at DATETIME,
   INDEX(pet_id),
-  FOREIGN KEY (pet_id) REFERENCES pets(id)
+  INDEX(device_uuid),
+  FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE RESTRICT
+) engine=InnoDB;
+
+CREATE TABLE IF NOT EXISTS adt_events (
+  id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  correlation_id VARCHAR(100) NOT NULL UNIQUE,
+  admission_id INT(4) UNSIGNED NOT NULL,
+  event_type VARCHAR(20) NOT NULL,
+  pet_id INT(4) UNSIGNED NOT NULL,
+  occurred_at DATETIME NOT NULL,
+  FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
+) engine=InnoDB;
+
+CREATE TABLE IF NOT EXISTS vital_samples (
+  id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admission_id INT(4) UNSIGNED NOT NULL,
+  metric VARCHAR(20) NOT NULL,
+  sample_value INT,
+  sampled_at DATETIME NOT NULL,
+  INDEX(admission_id, sampled_at),
+  FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
+) engine=InnoDB;
+
+CREATE TABLE IF NOT EXISTS alarm_limits (
+  id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admission_id INT(4) UNSIGNED NOT NULL,
+  metric VARCHAR(20) NOT NULL,
+  low_extreme INT NOT NULL,
+  low INT NOT NULL,
+  high INT NOT NULL,
+  high_extreme INT NOT NULL,
+  INDEX(admission_id),
+  FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
+) engine=InnoDB;
+
+CREATE TABLE IF NOT EXISTS alarm_events (
+  id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admission_id INT(4) UNSIGNED NOT NULL,
+  metric VARCHAR(20) NOT NULL,
+  level VARCHAR(10) NOT NULL,
+  state VARCHAR(10) NOT NULL,
+  started_at DATETIME NOT NULL,
+  ended_at DATETIME,
+  trigger_value INT,
+  acked_by VARCHAR(80),
+  acked_at DATETIME,
+  INDEX(admission_id, state),
+  FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
 ) engine=InnoDB;

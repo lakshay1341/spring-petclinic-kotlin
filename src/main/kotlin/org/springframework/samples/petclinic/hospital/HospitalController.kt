@@ -2,39 +2,49 @@ package org.springframework.samples.petclinic.hospital
 
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
-import java.time.Instant
+import java.util.UUID
 
 /**
- * Increment 1 hospital monitoring thread: admit a pet, push one numeric vital (HR) over plain
- * HTTP, poll it on a page, discharge. No device app, FHIR, WebSocket or alarms yet.
+ * Hospital monitoring HTTP surface. Admit/discharge delegate to AdmissionService (audited ADT).
+ * Vitals push goes through AlarmEngine.ingest (persist sample + evaluate alarm in one transaction);
+ * a missing heartRate is an explicit GAP. The vitals path stays off the ADT audit machinery.
  */
 @Controller
-class HospitalController(val admissions: PetAdmissionRepository) {
+class HospitalController(
+    val admissions: PetAdmissionRepository,
+    val admissionService: AdmissionService,
+    val alarmEngine: AlarmEngine,
+    val alarmEvents: AlarmEventRepository
+) {
 
     @PostMapping("/pets/{petId}/admit")
-    fun admit(@PathVariable petId: Int): String {
-        if (admissions.findByPetIdAndDischargedAtIsNull(petId) == null) {
-            val admission = PetAdmission()
-            admission.petId = petId
-            admission.admittedAt = Instant.now()
-            admissions.save(admission)
-        }
+    fun admit(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
+        admissionService.admit(petId, correlationId ?: UUID.randomUUID().toString())
         return "redirect:/hospital/$petId"
+    }
+
+    @GetMapping("/hospital")
+    fun ward(model: MutableMap<String, Any>): String {
+        model["admissions"] = admissions.findByDischargedAtIsNull()
+        return "hospital/ward"
     }
 
     @GetMapping("/hospital/{petId}")
     fun monitor(@PathVariable petId: Int, model: MutableMap<String, Any>): String {
         model["petId"] = petId
-        admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { model["admission"] = it }
+        admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { admission ->
+            model["admission"] = admission
+            admission.id?.let { id ->
+                alarmEvents.findByAdmissionIdAndMetricAndState(id, "HR", "OPEN")?.let { model["alarm"] = it }
+            }
+        }
         return "hospital/monitor"
     }
 
     @PostMapping("/hospital/{petId}/vitals")
-    fun pushVital(@PathVariable petId: Int, @RequestParam heartRate: Int): String {
+    fun pushVital(@PathVariable petId: Int, @RequestParam(required = false) heartRate: Int?): String {
         admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
-            it.latestHeartRate = heartRate
-            it.lastVitalAt = Instant.now()
-            admissions.save(it)
+            alarmEngine.ingest(it, heartRate)
         }
         return "redirect:/hospital/$petId"
     }
@@ -50,11 +60,8 @@ class HospitalController(val admissions: PetAdmissionRepository) {
     }
 
     @PostMapping("/pets/{petId}/discharge")
-    fun discharge(@PathVariable petId: Int): String {
-        admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
-            it.dischargedAt = Instant.now()
-            admissions.save(it)
-        }
+    fun discharge(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
+        admissionService.discharge(petId, correlationId ?: UUID.randomUUID().toString())
         return "redirect:/hospital/$petId"
     }
 }
