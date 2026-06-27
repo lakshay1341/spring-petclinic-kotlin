@@ -63,4 +63,36 @@ class VitalIngestWebSocketSmokeTest(
 
         session.close()
     }
+
+    @Test
+    fun dischargePushesPatientInactiveToDevice() {
+        admissionService.admit(2, UUID.randomUUID().toString())
+        val admission = admissions.findByPetIdAndDischargedAtIsNull(2)!!
+        admission.deviceUuid = "smoke-dev-2"
+        admissions.save(admission)
+
+        val frames = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val latch = CountDownLatch(1)
+        val client = StandardWebSocketClient()
+        val headers = WebSocketHttpHeaders()
+        headers.add("Authorization", "Bearer test")
+        val clientHandler = object : TextWebSocketHandler() {
+            override fun handleTextMessage(s: WebSocketSession, m: TextMessage) {
+                frames.add(m.payload)
+                if (m.payload.contains("Patient")) latch.countDown()
+            }
+        }
+
+        val session = client.execute(
+            clientHandler, headers, URI("ws://localhost:$port/api/v1/fhir/acct-1/smoke-dev-2/store")
+        ).get(5, TimeUnit.SECONDS)
+
+        Thread.sleep(300) // let the server finish registering the session before we discharge
+        admissionService.discharge(2, UUID.randomUUID().toString())
+
+        assert(latch.await(5, TimeUnit.SECONDS)) { "no Patient discharge frame received" }
+        assert(frames.any { it.contains("Patient") && it.contains("\"active\":false") }) { "wrong frames: $frames" }
+
+        session.close()
+    }
 }
