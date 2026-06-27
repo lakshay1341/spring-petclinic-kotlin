@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
+<body>
+  <h2>Device Provisioning</h2>
+  <p class="text-muted">
+    Scan this QR with the monitoring app to set its server URL, account, OAuth credentials and
+    Basic auth token. <strong>The QR carries credentials in cleartext (the device protocol is
+    fixed)</strong> — provision only over a trusted network / TLS, and never embed real secrets here.
+  </p>
+
+  <div class="row">
+    <div class="col-md-6">
+      <form id="cfg" onsubmit="return false;">
+        <div class="mb-2"><label class="form-label">Login URL (apiUrl)</label>
+          <input class="form-control" id="loginUrl" th:value="${loginUrl}"></div>
+        <div class="mb-2"><label class="form-label">Account number</label>
+          <input class="form-control" id="accountNumber" th:value="${accountNumber}"></div>
+        <div class="mb-2"><label class="form-label">Username</label>
+          <input class="form-control" id="username" th:value="${username}"></div>
+        <div class="mb-2"><label class="form-label">Password</label>
+          <input class="form-control" id="password" th:value="${password}"></div>
+        <div class="mb-2"><label class="form-label">Origin</label>
+          <input class="form-control" id="origin" th:value="${origin}"></div>
+        <div class="mb-2"><label class="form-label">Body token</label>
+          <input class="form-control" id="bodyToken" th:value="${bodyToken}"></div>
+        <div class="mb-2"><label class="form-label">Basic authToken</label>
+          <input class="form-control" id="authToken" th:value="${authToken}"></div>
+        <button class="btn btn-primary" type="button" onclick="render()">Generate QR</button>
+      </form>
+    </div>
+    <div class="col-md-6">
+      <div id="qr"></div>
+      <pre id="json" style="white-space:pre-wrap;word-break:break-all;font-size:11px;"></pre>
+    </div>
+  </div>
+
+  <script th:src="@{/webjars/qrcode-generator/qrcode.js}"></script>
+  <script>
+    function buildJson() {
+      const v = id => document.getElementById(id).value;
+      const baseUri = '?accountNumber=' + encodeURIComponent(v('accountNumber')) +
+        '&username=' + encodeURIComponent(v('username')) +
+        '&Origin=' + encodeURIComponent(v('origin')) +
+        '&Token=' + encodeURIComponent(v('bodyToken')) +
+        '&password=' + encodeURIComponent(v('password'));
+      return {
+        name: 'petclinic', version: '1',
+        payload: { loginUrl: v('loginUrl'), baseUri: baseUri, authToken: v('authToken') }
+      };
+    }
+    function render() {
+      const text = JSON.stringify(buildJson());
+      const box = document.getElementById('qr');
+      const qr = qrcode(0, 'M');
+      qr.addData(text);
+      qr.make();
+      box.innerHTML = qr.createImgTag(5, 10);
+      document.getElementById('json').textContent = text;
+    }
+    render();
+  </script>
+</body>
+</html>
