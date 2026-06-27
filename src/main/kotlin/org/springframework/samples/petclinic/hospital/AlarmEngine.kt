@@ -27,11 +27,12 @@ class AlarmEngine(
     }
 
     @Transactional
-    fun ingest(admission: PetAdmission, value: Int?) {
+    fun ingest(admission: PetAdmission, value: Int?, observationId: String? = null) {
         val sample = VitalSample()
         sample.admissionId = admission.id
         sample.metric = METRIC
         sample.sampleValue = value
+        sample.observationId = observationId
         sample.sampledAt = Instant.now()
         samples.save(sample)
 

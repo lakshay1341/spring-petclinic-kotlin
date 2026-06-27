@@ -22,6 +22,9 @@ class VitalSample : BaseEntity() {
     @Column(name = "sample_value")
     var sampleValue: Int? = null
 
+    @Column(name = "observation_id", unique = true)
+    var observationId: String? = null
+
     @Column(name = "sampled_at")
     var sampledAt: Instant = Instant.now()
 }

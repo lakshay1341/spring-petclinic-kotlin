@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS vital_samples (
   admission_id INT(4) UNSIGNED NOT NULL,
   metric VARCHAR(20) NOT NULL,
   sample_value INT,
+  observation_id VARCHAR(100) UNIQUE,
   sampled_at DATETIME NOT NULL,
   INDEX(admission_id, sampled_at),
   FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
