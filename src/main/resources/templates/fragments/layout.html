@@ -60,6 +60,16 @@
                     <span>Veterinarians</span>
                 </li>
 
+                <li th:replace="~{::menuItem ('/hospital','hospital','ward census','heartbeat','Ward')}">
+                    <span class="fa fa-heartbeat" aria-hidden="true"></span>
+                    <span>Ward</span>
+                </li>
+
+                <li th:replace="~{::menuItem ('/device/setup','device','device provisioning','qrcode','Device')}">
+                    <span class="fa fa-qrcode" aria-hidden="true"></span>
+                    <span>Device</span>
+                </li>
+
                 <li
                         th:replace="~{::menuItem ('/oups','error','trigger a RuntimeException to see how it is handled','exclamation-triangle','Error')}">
                     <span class="fa exclamation-triangle" aria-hidden="true"></span>
