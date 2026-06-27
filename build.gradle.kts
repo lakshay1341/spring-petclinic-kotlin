@@ -53,6 +53,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.webjars.npm:bootstrap:$boostrapVersion")
     implementation("org.webjars.npm:font-awesome:$fontAwesomeVersion")
+    implementation("org.webjars.npm:qrcode-generator:1.4.4")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux")
