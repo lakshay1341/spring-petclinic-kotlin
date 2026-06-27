@@ -2,20 +2,42 @@ package org.springframework.samples.petclinic.hospital
 
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 /**
- * Hospital monitoring HTTP surface. Admit/discharge delegate to AdmissionService (audited ADT).
- * Vitals push goes through AlarmEngine.ingest (persist sample + evaluate alarm in one transaction);
- * a missing heartRate is an explicit GAP. The vitals path stays off the ADT audit machinery.
+ * One census row for the ward triage screen. The stale/escalated verdicts are computed server-side
+ * (against the server clock) — a browser clock must not be able to paint dead data as fresh.
  */
+data class CensusRow(
+    val petId: Int?,
+    val cage: String?,
+    val ward: String?,
+    val heartRate: Int?,
+    val lastVitalAt: String?,
+    val ageSeconds: Long?,
+    val stale: Boolean,
+    val level: String?,
+    val state: String?,
+    val ackedBy: String?,
+    val silencedUntil: String?,
+    val escalated: Boolean
+)
+
 @Controller
 class HospitalController(
     val admissions: PetAdmissionRepository,
     val admissionService: AdmissionService,
     val alarmEngine: AlarmEngine,
-    val alarmEvents: AlarmEventRepository
+    val alarmEvents: AlarmEventRepository,
+    val alarmResponse: AlarmResponseService
 ) {
+
+    companion object {
+        const val STALE_SECONDS = 15L
+        const val ESCALATE_SECONDS = 30L
+    }
 
     @PostMapping("/pets/{petId}/admit")
     fun admit(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
@@ -24,9 +46,32 @@ class HospitalController(
     }
 
     @GetMapping("/hospital")
-    fun ward(model: MutableMap<String, Any>): String {
-        model["admissions"] = admissions.findByDischargedAtIsNull()
-        return "hospital/ward"
+    fun ward(): String = "hospital/ward"
+
+    @GetMapping("/hospital/census", produces = ["application/json"])
+    @ResponseBody
+    fun census(): List<CensusRow> {
+        val now = Instant.now()
+        // ponytail: N+1 open-alarm lookup per active admission; fine at ward scale, batch if a ward grows to hundreds.
+        return admissions.findByDischargedAtIsNull().map { a ->
+            val alarm = a.id?.let { alarmEvents.findByAdmissionIdAndMetricAndState(it, "HR", "OPEN") }
+            val age = a.lastVitalAt?.let { Duration.between(it, now).seconds }
+            val stale = age == null || age > STALE_SECONDS
+            val escalated = alarm != null && alarm.level == AlarmLevel.EXTREME && alarm.ackedAt == null &&
+                Duration.between(alarm.startedAt, now).seconds > ESCALATE_SECONDS
+            CensusRow(
+                a.petId, a.cage, a.ward, a.latestHeartRate, a.lastVitalAt?.toString(), age, stale,
+                alarm?.level?.name, alarm?.state, alarm?.ackedBy, alarm?.silencedUntil?.toString(), escalated
+            )
+        }.sortedWith(compareBy({ rank(it) }, { it.cage ?: "" }))
+    }
+
+    private fun rank(r: CensusRow): Int = when {
+        r.level == "EXTREME" && r.escalated -> 0
+        r.level == "EXTREME" -> 1
+        r.level == "HIGH" || r.level == "LOW" -> 2
+        r.stale -> 3
+        else -> 4
     }
 
     @GetMapping("/hospital/{petId}")
@@ -57,6 +102,20 @@ class HospitalController(
             "heartRate" to admission?.latestHeartRate,
             "lastVitalAt" to admission?.lastVitalAt?.toString()
         )
+    }
+
+    @PostMapping("/hospital/{petId}/alarm/ack", produces = ["application/json"])
+    @ResponseBody
+    fun ack(@PathVariable petId: Int): Map<String, Any> {
+        alarmResponse.acknowledge(petId, "vet")
+        return mapOf("ok" to true)
+    }
+
+    @PostMapping("/hospital/{petId}/alarm/silence", produces = ["application/json"])
+    @ResponseBody
+    fun silence(@PathVariable petId: Int): Map<String, Any> {
+        alarmResponse.silence(petId, "vet")
+        return mapOf("ok" to true)
     }
 
     @PostMapping("/pets/{petId}/discharge")

@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS alarm_events (
   trigger_value INT,
   acked_by VARCHAR(80),
   acked_at DATETIME,
+  silenced_until DATETIME,
+  silenced_by VARCHAR(80),
   INDEX(admission_id, state),
   FOREIGN KEY (admission_id) REFERENCES pet_admissions(id) ON DELETE RESTRICT
 ) engine=InnoDB;

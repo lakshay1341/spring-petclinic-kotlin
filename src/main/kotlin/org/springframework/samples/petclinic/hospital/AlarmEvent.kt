@@ -8,8 +8,8 @@ enum class AlarmLevel { LOW, HIGH, EXTREME }
 
 /**
  * An alarm lifecycle row: OPEN on a debounced breach (EXTREME bypasses the debounce), CLOSED on
- * return-to-range. The [ackedBy]/[ackedAt] seats are reserved now (acknowledge logic ships in #4)
- * so the safety table is not migrated later.
+ * return-to-range (only the AlarmEngine closes it). ackedBy/ackedAt record who saw it (ack never
+ * closes it). silencedUntil is a bounded auto-revoking mute lease (advisory only).
  */
 @Entity
 @Table(name = "alarm_events")
@@ -42,4 +42,10 @@ class AlarmEvent : BaseEntity() {
 
     @Column(name = "acked_at")
     var ackedAt: Instant? = null
+
+    @Column(name = "silenced_until")
+    var silencedUntil: Instant? = null
+
+    @Column(name = "silenced_by")
+    var silencedBy: String? = null
 }

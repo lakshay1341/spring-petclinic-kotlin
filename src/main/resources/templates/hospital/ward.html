@@ -2,22 +2,102 @@
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
 <body>
-  <h2>Ward — Active Admissions</h2>
-  <table class="table table-striped">
+  <h2>Ward Census</h2>
+  <button id="sound-toggle" class="btn btn-primary" type="button">Enable sound</button>
+
+  <table class="table table-striped" id="census">
     <thead>
-      <tr><th>Pet ID</th><th>Status</th><th>Ward</th><th>Cage</th><th>Device</th><th>Admitted</th><th></th></tr>
+      <tr><th>Cage</th><th>Pet</th><th>HR</th><th>Freshness</th><th>Alarm</th><th>Ack</th><th></th></tr>
     </thead>
-    <tbody>
-      <tr th:each="a : ${admissions}">
-        <td th:text="${a.petId}"></td>
-        <td th:text="${a.status}"></td>
-        <td th:text="${a.ward}"></td>
-        <td th:text="${a.cage}"></td>
-        <td th:text="${a.deviceUuid}"></td>
-        <td th:text="${a.admittedAt}"></td>
-        <td><a th:href="@{/hospital/{petId}(petId=${a.petId})}">Monitor</a></td>
-      </tr>
-    </tbody>
+    <tbody id="census-body"></tbody>
   </table>
+
+  <style>
+    tr.lvl-EXTREME > td { background:#f5c6cb; }
+    tr.lvl-HIGH > td, tr.lvl-LOW > td { background:#ffeeba; }
+    tr.stale > td { color:#888; font-style:italic; }
+    tr.escalated > td { background:#dc3545; color:#fff; animation:blink 1s step-start infinite; }
+    @keyframes blink { 50% { opacity:.4; } }
+  </style>
+
+  <script th:inline="javascript">
+    let soundOn = false, audioCtx = null;
+    const toggle = document.getElementById('sound-toggle');
+    toggle.addEventListener('click', () => {
+      soundOn = !soundOn;
+      if (soundOn && !audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      toggle.textContent = soundOn ? 'Mute sound' : 'Enable sound';
+      if (!soundOn) stopTone();
+    });
+
+    let beepTimer = null, osc = null, gain = null;
+    function startTone(level) {
+      stopTone();
+      if (!audioCtx) return;
+      osc = audioCtx.createOscillator();
+      gain = audioCtx.createGain();
+      osc.frequency.value = (level === 'EXTREME') ? 880 : 520;
+      gain.gain.value = (level === 'EXTREME') ? 0.25 : 0.08;
+      osc.connect(gain); gain.connect(audioCtx.destination); osc.start();
+      if (level !== 'EXTREME') {
+        let on = true;
+        beepTimer = setInterval(() => { on = !on; gain.gain.value = on ? 0.08 : 0; }, 600);
+      }
+    }
+    function stopTone() {
+      if (beepTimer) { clearInterval(beepTimer); beepTimer = null; }
+      if (osc) { try { osc.stop(); } catch (e) {} osc = null; }
+    }
+
+    function isSounding(r, now) {
+      if (r.state !== 'OPEN' || !r.level) return false;
+      if (r.level === 'EXTREME') return r.ackedBy == null;                 // EXTREME nags until acked, never silenced
+      if (r.silencedUntil && now < Date.parse(r.silencedUntil)) return false; // advisory within its silence lease
+      return true;
+    }
+
+    async function ack(petId) { await fetch('/hospital/' + petId + '/alarm/ack', { method: 'POST' }); poll(); }
+    async function silence(petId) { await fetch('/hospital/' + petId + '/alarm/silence', { method: 'POST' }); poll(); }
+
+    async function poll() {
+      const rows = await (await fetch('/hospital/census')).json();
+      const now = Date.now();
+      const body = document.getElementById('census-body');
+      body.innerHTML = '';
+      let soundExtreme = false, soundAdvisory = false;
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        if (r.level) tr.classList.add('lvl-' + r.level);
+        if (r.stale) tr.classList.add('stale');
+        if (r.escalated) tr.classList.add('escalated');
+        const fresh = r.stale
+          ? ('stale ' + Math.floor((r.ageSeconds || 0) / 60) + 'm')
+          : ((r.ageSeconds == null ? '—' : r.ageSeconds + 's') + ' ago');
+        const alarmTxt = r.level ? (r.level + (r.ackedBy ? ' (ack ' + r.ackedBy + ')' : '')) : '—';
+        let actions = '';
+        if (r.state === 'OPEN') {
+          actions = '<button onclick="ack(' + r.petId + ')">Ack</button>';
+          if (r.level !== 'EXTREME') actions += ' <button onclick="silence(' + r.petId + ')">Silence</button>';
+        }
+        tr.innerHTML =
+          '<td>' + (r.cage || '—') + '</td>' +
+          '<td><a href="/hospital/' + r.petId + '">' + r.petId + '</a></td>' +
+          '<td>' + (r.heartRate == null ? '—' : r.heartRate) + '</td>' +
+          '<td>' + fresh + '</td>' +
+          '<td>' + alarmTxt + '</td>' +
+          '<td>' + (r.ackedBy || '') + '</td>' +
+          '<td>' + actions + '</td>';
+        body.appendChild(tr);
+        if (isSounding(r, now)) {
+          if (r.level === 'EXTREME') soundExtreme = true; else soundAdvisory = true;
+        }
+      }
+      if (soundOn && soundExtreme) startTone('EXTREME');
+      else if (soundOn && soundAdvisory) startTone('LOW');
+      else stopTone();
+    }
+    setInterval(poll, 2000);
+    poll();
+  </script>
 </body>
 </html>
