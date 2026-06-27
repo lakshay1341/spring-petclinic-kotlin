@@ -9,4 +9,6 @@ interface PetAdmissionRepository : Repository<PetAdmission, Int> {
     fun findByPetIdAndDischargedAtIsNull(petId: Int): PetAdmission?
 
     fun findFirstByPetIdOrderByIdDesc(petId: Int): PetAdmission?
+
+    fun findByDischargedAtIsNull(): Collection<PetAdmission>
 }

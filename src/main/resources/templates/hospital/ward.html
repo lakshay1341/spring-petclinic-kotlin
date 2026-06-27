@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
+<body>
+  <h2>Ward — Active Admissions</h2>
+  <table class="table table-striped">
+    <thead>
+      <tr><th>Pet ID</th><th>Status</th><th>Ward</th><th>Cage</th><th>Device</th><th>Admitted</th><th></th></tr>
+    </thead>
+    <tbody>
+      <tr th:each="a : ${admissions}">
+        <td th:text="${a.petId}"></td>
+        <td th:text="${a.status}"></td>
+        <td th:text="${a.ward}"></td>
+        <td th:text="${a.cage}"></td>
+        <td th:text="${a.deviceUuid}"></td>
+        <td th:text="${a.admittedAt}"></td>
+        <td><a th:href="@{/hospital/{petId}(petId=${a.petId})}">Monitor</a></td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

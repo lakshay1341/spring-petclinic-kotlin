@@ -25,9 +25,11 @@ class HospitalControllerTest {
     @MockitoBean
     private lateinit var admissions: PetAdmissionRepository
 
+    @MockitoBean
+    private lateinit var admissionService: AdmissionService
+
     @Test
     fun admitRedirectsToMonitor() {
-        given(admissions.findByPetIdAndDischargedAtIsNull(1)).willReturn(null)
         mockMvc.perform(post("/pets/1/admit"))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/hospital/1"))
@@ -46,9 +48,6 @@ class HospitalControllerTest {
 
     @Test
     fun dischargeRedirectsToMonitor() {
-        val a = PetAdmission()
-        a.petId = 1
-        given(admissions.findByPetIdAndDischargedAtIsNull(1)).willReturn(a)
         mockMvc.perform(post("/pets/1/discharge"))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/hospital/1"))
