@@ -55,6 +55,7 @@ dependencies {
     implementation("org.webjars.npm:bootstrap:$boostrapVersion")
     implementation("org.webjars.npm:font-awesome:$fontAwesomeVersion")
     implementation("org.webjars.npm:qrcode-generator:1.4.4")
+    implementation("org.webjars.npm:uplot:1.6.30")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux")

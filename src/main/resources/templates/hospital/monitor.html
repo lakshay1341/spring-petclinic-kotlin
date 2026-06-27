@@ -27,13 +27,55 @@
       <button class="btn btn-primary" type="submit">Discharge</button>
     </form>
 
+    <div th:if="*{dischargedAt == null}">
+      <h4>HR trend</h4>
+      <div id="hrchart"></div>
+      <h4>Waveform <span id="wavestatus" style="color:#c00;font-weight:bold;"></span></h4>
+      <div id="wavechart"></div>
+    </div>
+
+    <link th:if="*{dischargedAt == null}" rel="stylesheet" th:href="@{/webjars/uplot/dist/uPlot.min.css}">
+    <script th:if="*{dischargedAt == null}" th:src="@{/webjars/uplot/dist/uPlot.iife.min.js}"></script>
     <script th:if="*{dischargedAt == null}" th:inline="javascript">
       const petId = [[${petId}]];
+
+      // Latest HR number (kept).
       setInterval(async () => {
-        const r = await fetch('/hospital/' + petId + '/vitals');
-        const v = await r.json();
+        const v = await (await fetch('/hospital/' + petId + '/vitals')).json();
         document.getElementById('hr').textContent = (v.heartRate ?? '—');
       }, 2000);
+
+      // HR trend — real timestamps, gaps drawn as breaks (spanGaps:false).
+      const hrPlot = new uPlot({
+        width: 600, height: 200,
+        series: [{}, { label: 'HR', stroke: 'red', spanGaps: false }],
+        scales: { x: { time: true } }
+      }, [ [], [] ], document.getElementById('hrchart'));
+      async function pollTrend() {
+        const d = await (await fetch('/hospital/' + petId + '/vitals/series')).json();
+        hrPlot.setData([d.t, d.hr]);
+      }
+      setInterval(pollTrend, 2000); pollTrend();
+
+      // Waveform — freshness-gated: a stale/absent buffer shows NO SIGNAL, never a frozen trace.
+      const wavePlot = new uPlot({
+        width: 600, height: 200,
+        series: [{}, { label: 'wave', stroke: 'blue' }],
+        scales: { x: { time: false } }
+      }, [ [], [] ], document.getElementById('wavechart'));
+      async function pollWave() {
+        const d = await (await fetch('/hospital/' + petId + '/waveform')).json();
+        const status = document.getElementById('wavestatus');
+        if (!d.values || d.values.length === 0 || d.ageMs < 0 || d.ageMs > 2000) {
+          status.textContent = 'NO SIGNAL';
+          wavePlot.setData([ [], [] ]);
+          return;
+        }
+        status.textContent = '';
+        const xs = d.values.map((_, i) => i * (d.period || 1) / 1000);
+        wavePlot.setData([xs, d.values]);
+      }
+      setInterval(pollWave, 1000); pollWave();
     </script>
   </div>
 </body>

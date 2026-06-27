@@ -28,12 +28,14 @@ class VitalIngestHandler(
     private val alarmEngine: AlarmEngine,
     private val mapper: ObjectMapper,
     private val registry: DeviceSessionRegistry,
+    private val waveformRing: WaveformRing,
     @param:Value("\${hospital.ws.idle-timeout-ms:60000}") private val idleTimeoutMs: Long = 60_000
 ) : TextWebSocketHandler() {
 
     companion object {
         const val HR_CODE = "8867-4" // LOINC heart rate — the only numeric vital ingested in this slice
         const val ATTR_DEVICE = "deviceUuid"
+        const val ATTR_ADMISSION = "admissionId"
     }
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
@@ -56,6 +58,7 @@ class VitalIngestHandler(
             return
         }
         session.attributes[ATTR_DEVICE] = deviceUuid
+        session.attributes[ATTR_ADMISSION] = admission!!.id!!
         registry.register(deviceUuid, session)
         // Heartbeat-driven eviction: the device pings every ~10s, so a live socket keeps resetting
         // this idle timer; a dead / half-open socket (kill -9, dropped network) goes silent and the
@@ -70,6 +73,7 @@ class VitalIngestHandler(
         // per-session idle-timeout (set in afterConnectionEstablished) closes a silent socket and
         // triggers this path, so the registry entry is reclaimed.
         (session.attributes[ATTR_DEVICE] as? String)?.let { registry.unregister(it, session) }
+        (session.attributes[ATTR_ADMISSION] as? Int)?.let { waveformRing.evict(it) }
     }
 
     public override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
@@ -84,7 +88,26 @@ class VitalIngestHandler(
         val uuid = node.path("id").asString()
         val code = node.path("code").path("coding").path(0).path("code").asString()
 
-        // Only numeric HR Observations feed the alarm engine. Waveforms / unknown codes are
+        // Waveform frame (FHIR SampledData): buffer in-memory for live display, never persisted.
+        val sampled = node.path("component").path(0).path("valueSampledData")
+        if (!sampled.isMissingNode) {
+            val admission = resolveAdmission(deviceUuid)
+            if (admission?.id != null) {
+                val origin = sampled.path("origin").path("value").asDouble()
+                val factor = if (sampled.path("factor").isMissingNode) 1.0 else sampled.path("factor").asDouble()
+                val period = sampled.path("period").asDouble()
+                val samples = sampled.path("data").asString().trim()
+                    .split(Regex("\\s+"))
+                    .mapNotNull { it.toDoubleOrNull() }
+                    .map { origin + factor * it }
+                    .toDoubleArray()
+                waveformRing.append(admission.id!!, samples, period)
+            }
+            ack(deviceUuid, uuid, "waveform buffered")
+            return
+        }
+
+        // Only numeric HR Observations feed the alarm engine. Unknown codes are
         // ACKed-and-ignored: never error on input we do not model yet.
         if (code != HR_CODE) {
             ack(deviceUuid, uuid, "ignored: non-HR code")

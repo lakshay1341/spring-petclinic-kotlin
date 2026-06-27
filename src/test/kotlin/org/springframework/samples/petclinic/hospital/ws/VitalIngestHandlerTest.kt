@@ -28,7 +28,8 @@ class VitalIngestHandlerTest {
     private val alarmEngine = mock(AlarmEngine::class.java)
     private val mapper = JsonMapper.builder().build()
     private val registry = DeviceSessionRegistry()
-    private val handler = VitalIngestHandler(admissions, alarmEngine, mapper, registry)
+    private val waveformRing = WaveformRing()
+    private val handler = VitalIngestHandler(admissions, alarmEngine, mapper, registry, waveformRing)
 
     private fun <T> anyObject(): T = Mockito.any()
 
@@ -80,5 +81,19 @@ class VitalIngestHandlerTest {
         handler.handleTextMessage(s, TextMessage(json))
 
         verify(s).sendMessage(anyObject())
+    }
+
+    @Test
+    fun waveformFrameIsBufferedForDisplay() {
+        val admission = PetAdmission().apply { id = 1; petId = 7; deviceUuid = "dev-1" }
+        given(admissions.findByDeviceUuidAndDischargedAtIsNull("dev-1")).willReturn(admission)
+        val s = session()
+        val json = """{"resourceType":"Observation","id":"w1","code":{"coding":[{"code":"131143"}]},"component":[{"valueSampledData":{"origin":{"value":0},"period":3.9,"factor":1.0,"data":"10 20 30"}}]}"""
+
+        handler.handleTextMessage(s, TextMessage(json))
+
+        val snap = waveformRing.snapshot(1)!!
+        assert(snap.values.toList() == listOf(10.0, 20.0, 30.0))
+        verify(s).sendMessage(anyObject()) // still ACKed
     }
 }
