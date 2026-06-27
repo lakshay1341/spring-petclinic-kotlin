@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
+<body>
+  <h2>Pet Monitor</h2>
+
+  <div th:if="${admission == null}">
+    <p>No admission for this pet.</p>
+    <form th:action="@{/pets/{petId}/admit(petId=${petId})}" method="post">
+      <button class="btn btn-primary" type="submit">Admit</button>
+    </form>
+  </div>
+
+  <div th:if="${admission != null}" th:object="${admission}">
+    <table class="table table-striped">
+      <tr><th>Status</th><td th:text="*{dischargedAt == null} ? 'ADMITTED' : 'DISCHARGED'"></td></tr>
+      <tr><th>Admitted</th><td th:text="*{admittedAt}"></td></tr>
+      <tr><th>Discharged</th><td th:text="*{dischargedAt}"></td></tr>
+      <tr><th>Heart rate</th><td><span id="hr" th:text="*{latestHeartRate}">—</span> bpm</td></tr>
+    </table>
+
+    <form th:if="*{dischargedAt == null}" th:action="@{/pets/{petId}/discharge(petId=${petId})}" method="post">
+      <button class="btn btn-primary" type="submit">Discharge</button>
+    </form>
+
+    <script th:if="*{dischargedAt == null}" th:inline="javascript">
+      const petId = [[${petId}]];
+      setInterval(async () => {
+        const r = await fetch('/hospital/' + petId + '/vitals');
+        const v = await r.json();
+        document.getElementById('hr').textContent = (v.heartRate ?? '—');
+      }, 2000);
+    </script>
+  </div>
+</body>
+</html>
