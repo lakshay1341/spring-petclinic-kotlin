@@ -27,13 +27,17 @@ class VitalIngestHandlerTest {
     private val admissions = mock(PetAdmissionRepository::class.java)
     private val alarmEngine = mock(AlarmEngine::class.java)
     private val mapper = JsonMapper.builder().build()
-    private val handler = VitalIngestHandler(admissions, alarmEngine, mapper)
+    private val registry = DeviceSessionRegistry()
+    private val handler = VitalIngestHandler(admissions, alarmEngine, mapper, registry)
 
     private fun <T> anyObject(): T = Mockito.any()
 
     private fun session(): WebSocketSession {
         val s = mock(WebSocketSession::class.java)
         given(s.attributes).willReturn(mutableMapOf<String, Any>("deviceUuid" to "dev-1"))
+        given(s.isOpen).willReturn(true)
+        given(s.id).willReturn("test-session")
+        registry.register("dev-1", s) // ACK now goes out through the registry's per-device session
         return s
     }
 

@@ -24,7 +24,8 @@ import tools.jackson.databind.ObjectMapper
 class VitalIngestHandler(
     private val admissions: PetAdmissionRepository,
     private val alarmEngine: AlarmEngine,
-    private val mapper: ObjectMapper
+    private val mapper: ObjectMapper,
+    private val registry: DeviceSessionRegistry
 ) : TextWebSocketHandler() {
 
     companion object {
@@ -52,6 +53,14 @@ class VitalIngestHandler(
             return
         }
         session.attributes[ATTR_DEVICE] = deviceUuid
+        registry.register(deviceUuid, session)
+    }
+
+    override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
+        // ponytail: a half-open socket (e.g. kill -9 client) may never fire this, leaking the
+        // registry entry. Relies on the container idle-timeout for now; add an explicit
+        // heartbeat / idle-eviction sweep if leaked sessions ever show up.
+        (session.attributes[ATTR_DEVICE] as? String)?.let { registry.unregister(it, session) }
     }
 
     public override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
@@ -69,24 +78,24 @@ class VitalIngestHandler(
         // Only numeric HR Observations feed the alarm engine. Waveforms / unknown codes are
         // ACKed-and-ignored: never error on input we do not model yet.
         if (code != HR_CODE) {
-            ack(session, uuid, "ignored: non-HR code")
+            ack(deviceUuid, uuid, "ignored: non-HR code")
             return
         }
         val value = node.path("valueQuantity").path("value").asInt()
 
         val admission = resolveAdmission(deviceUuid)
         if (admission == null) {
-            ack(session, uuid, "error: no open admission for device")
+            ack(deviceUuid, uuid, "error: no open admission for device")
             return
         }
 
         try {
             alarmEngine.ingest(admission, value, uuid)
-            ack(session, uuid, "Observation stored")
+            ack(deviceUuid, uuid, "Observation stored")
         } catch (e: DataIntegrityViolationException) {
             // Duplicate observation id (device resend): the whole ingest transaction rolled back,
             // so no sample was double-counted and no alarm state advanced. Idempotent no-op.
-            ack(session, uuid, "duplicate ignored")
+            ack(deviceUuid, uuid, "duplicate ignored")
         }
     }
 
@@ -96,13 +105,13 @@ class VitalIngestHandler(
         null // two open admissions share one device — refuse rather than pick a patient
     }
 
-    private fun ack(session: WebSocketSession, uuid: String, text: String) {
+    private fun ack(deviceUuid: String, uuid: String, text: String) {
         val outcome = mapOf(
             "resourceType" to "OperationOutcome",
             "id" to uuid,
             "issue" to listOf(mapOf("severity" to "information", "details" to mapOf("text" to text)))
         )
-        session.sendMessage(TextMessage(mapper.writeValueAsString(outcome)))
+        registry.send(deviceUuid, mapper.writeValueAsString(outcome))
     }
 
     private fun deviceUuidFromPath(session: WebSocketSession): String? {

@@ -21,7 +21,8 @@ class AdmissionServiceTest {
     private val adtEvents = mock(AdtEventRepository::class.java)
     private val pets = mock(PetRepository::class.java)
     private val alarmLimits = mock(AlarmLimitRepository::class.java)
-    private val service = AdmissionService(admissions, adtEvents, pets, alarmLimits)
+    private val adtNotifier = mock(org.springframework.samples.petclinic.hospital.ws.DeviceAdtNotifier::class.java)
+    private val service = AdmissionService(admissions, adtEvents, pets, alarmLimits, adtNotifier)
 
     private fun <T> anyObject(): T = Mockito.any()
 

@@ -1,7 +1,10 @@
 package org.springframework.samples.petclinic.hospital
 
+import org.springframework.samples.petclinic.hospital.ws.DeviceAdtNotifier
 import org.springframework.samples.petclinic.owner.PetRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
@@ -16,7 +19,8 @@ class AdmissionService(
     val admissions: PetAdmissionRepository,
     val adtEvents: AdtEventRepository,
     val pets: PetRepository,
-    val alarmLimits: AlarmLimitRepository
+    val alarmLimits: AlarmLimitRepository,
+    val adtNotifier: DeviceAdtNotifier
 ) {
 
     @Transactional
@@ -46,6 +50,16 @@ class AdmissionService(
         active.dischargedAt = Instant.now()
         admissions.save(active)
         audit(correlationId, "DISCHARGE", petId, active.id)
+        // Tell the streaming device its pet is discharged — only AFTER this commits, never inside
+        // the tx (a network write must not ride on a transaction that may still roll back).
+        val deviceUuid = active.deviceUuid ?: return
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() = adtNotifier.pushDischarge(deviceUuid, petId)
+            })
+        } else {
+            adtNotifier.pushDischarge(deviceUuid, petId)
+        }
     }
 
     private fun seedAlarmLimits(admissionId: Int?, petId: Int) {
