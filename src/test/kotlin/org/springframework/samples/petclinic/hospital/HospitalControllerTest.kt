@@ -34,6 +34,9 @@ class HospitalControllerTest {
     @MockitoBean
     private lateinit var alarmEvents: AlarmEventRepository
 
+    @MockitoBean
+    private lateinit var alarmResponse: AlarmResponseService
+
     @Test
     fun admitRedirectsToMonitor() {
         mockMvc.perform(post("/pets/1/admit"))
@@ -50,6 +53,13 @@ class HospitalControllerTest {
         mockMvc.perform(get("/hospital/1/vitals"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.heartRate").value(90))
+    }
+
+    @Test
+    fun ackReturnsOk() {
+        mockMvc.perform(post("/hospital/1/alarm/ack"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.ok").value(true))
     }
 
     @Test
