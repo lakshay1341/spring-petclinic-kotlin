@@ -2,17 +2,19 @@ package org.springframework.samples.petclinic.hospital
 
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
-import java.time.Instant
 import java.util.UUID
 
 /**
- * Hospital monitoring HTTP surface. Admit/discharge delegate to AdmissionService (audited ADT);
- * the vitals push/poll stay a thin direct path on the live admission row — vitals are not ADT events.
+ * Hospital monitoring HTTP surface. Admit/discharge delegate to AdmissionService (audited ADT).
+ * Vitals push goes through AlarmEngine.ingest (persist sample + evaluate alarm in one transaction);
+ * a missing heartRate is an explicit GAP. The vitals path stays off the ADT audit machinery.
  */
 @Controller
 class HospitalController(
     val admissions: PetAdmissionRepository,
-    val admissionService: AdmissionService
+    val admissionService: AdmissionService,
+    val alarmEngine: AlarmEngine,
+    val alarmEvents: AlarmEventRepository
 ) {
 
     @PostMapping("/pets/{petId}/admit")
@@ -30,16 +32,19 @@ class HospitalController(
     @GetMapping("/hospital/{petId}")
     fun monitor(@PathVariable petId: Int, model: MutableMap<String, Any>): String {
         model["petId"] = petId
-        admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { model["admission"] = it }
+        admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { admission ->
+            model["admission"] = admission
+            admission.id?.let { id ->
+                alarmEvents.findByAdmissionIdAndMetricAndState(id, "HR", "OPEN")?.let { model["alarm"] = it }
+            }
+        }
         return "hospital/monitor"
     }
 
     @PostMapping("/hospital/{petId}/vitals")
-    fun pushVital(@PathVariable petId: Int, @RequestParam heartRate: Int): String {
+    fun pushVital(@PathVariable petId: Int, @RequestParam(required = false) heartRate: Int?): String {
         admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
-            it.latestHeartRate = heartRate
-            it.lastVitalAt = Instant.now()
-            admissions.save(it)
+            alarmEngine.ingest(it, heartRate)
         }
         return "redirect:/hospital/$petId"
     }

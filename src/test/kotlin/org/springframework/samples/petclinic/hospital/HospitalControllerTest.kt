@@ -28,6 +28,12 @@ class HospitalControllerTest {
     @MockitoBean
     private lateinit var admissionService: AdmissionService
 
+    @MockitoBean
+    private lateinit var alarmEngine: AlarmEngine
+
+    @MockitoBean
+    private lateinit var alarmEvents: AlarmEventRepository
+
     @Test
     fun admitRedirectsToMonitor() {
         mockMvc.perform(post("/pets/1/admit"))

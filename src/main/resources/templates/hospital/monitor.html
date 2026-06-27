@@ -17,6 +17,10 @@
       <tr><th>Admitted</th><td th:text="*{admittedAt}"></td></tr>
       <tr><th>Discharged</th><td th:text="*{dischargedAt}"></td></tr>
       <tr><th>Heart rate</th><td><span id="hr" th:text="*{latestHeartRate}">—</span> bpm</td></tr>
+      <tr><th>Alarm</th><td>
+        <span th:if="${alarm == null}">none</span>
+        <span th:if="${alarm != null}" th:text="${alarm.level + ' (HR ' + alarm.triggerValue + ')'}"></span>
+      </td></tr>
     </table>
 
     <form th:if="*{dischargedAt == null}" th:action="@{/pets/{petId}/discharge(petId=${petId})}" method="post">
