@@ -13,11 +13,15 @@
   </table>
 
   <style>
-    tr.lvl-EXTREME > td { background:#f5c6cb; }
-    tr.lvl-HIGH > td, tr.lvl-LOW > td { background:#ffeeba; }
+    /* Priority colours match the reference device (IEC 60601-1-8): CRITICAL=red, HIGH=orange.
+       Colour encodes SEVERITY; direction (high vs low) is carried by the label text. */
+    tr.lvl-EXTREME > td { background:#dc3545; color:#fff; text-transform:uppercase; }
+    tr.lvl-HIGH > td, tr.lvl-LOW > td { background:#fd7e14; color:#fff; text-transform:uppercase; }
     tr.stale > td { color:#888; font-style:italic; }
-    tr.escalated > td { background:#dc3545; color:#fff; animation:blink 1s step-start infinite; }
-    @keyframes blink { 50% { opacity:.4; } }
+    /* Every OPEN un-acked alarm blinks; faster for CRITICAL than HIGH. Ack stops the blink. */
+    tr.blink-crit > td { animation:blink .6s step-start infinite; }
+    tr.blink-high > td { animation:blink 1.2s step-start infinite; }
+    @keyframes blink { 50% { opacity:.35; } }
   </style>
 
   <script th:inline="javascript">
@@ -69,11 +73,11 @@
         const tr = document.createElement('tr');
         if (r.level) tr.classList.add('lvl-' + r.level);
         if (r.stale) tr.classList.add('stale');
-        if (r.escalated) tr.classList.add('escalated');
+        if (r.state === 'OPEN' && !r.ackedBy) tr.classList.add(r.level === 'EXTREME' ? 'blink-crit' : 'blink-high');
         const fresh = r.stale
           ? ('stale ' + Math.floor((r.ageSeconds || 0) / 60) + 'm')
           : ((r.ageSeconds == null ? '—' : r.ageSeconds + 's') + ' ago');
-        const alarmTxt = r.level ? (r.level + (r.ackedBy ? ' (ack ' + r.ackedBy + ')' : '')) : '—';
+        const alarmTxt = r.level ? (r.level + ' HR ' + (r.heartRate == null ? '' : r.heartRate) + (r.ackedBy ? ' (ack ' + r.ackedBy + ')' : '')) : '—';
         let actions = '';
         if (r.state === 'OPEN') {
           actions = '<button onclick="ack(' + r.petId + ')">Ack</button>';

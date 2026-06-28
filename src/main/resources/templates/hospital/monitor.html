@@ -4,6 +4,17 @@
 <body>
   <h2>Monitor: <span th:text="${petName} ?: ('pet #' + ${petId})">pet</span></h2>
 
+  <style>
+    /* Alarm badge priority colours match the reference device: CRITICAL=red, HIGH=orange.
+       Blinks while OPEN and un-acknowledged; steady once acked. */
+    .alarm-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:bold; text-transform:uppercase; color:#fff; }
+    .alarm-badge.lvl-EXTREME { background:#dc3545; }
+    .alarm-badge.lvl-HIGH, .alarm-badge.lvl-LOW { background:#fd7e14; }
+    .blink-crit { animation:blink .6s step-start infinite; }
+    .blink-high { animation:blink 1.2s step-start infinite; }
+    @keyframes blink { 50% { opacity:.35; } }
+  </style>
+
   <div th:if="${admission == null}">
     <p>No admission for this pet. Admit and bind a device to start monitoring.</p>
     <form th:action="@{/pets/{petId}/admit(petId=${petId})}" method="post" class="row g-2">
@@ -25,7 +36,9 @@
       <tr><th>Alarm</th><td>
         <span th:if="${alarm == null}">none</span>
         <span th:if="${alarm != null}">
-          <strong th:text="${alarm.level + ' (HR ' + alarm.triggerValue + ')'}"></strong>
+          <span class="alarm-badge"
+                th:classappend="${'lvl-' + alarm.level.name() + (alarm.ackedAt == null ? (alarm.level.name() == 'EXTREME' ? ' blink-crit' : ' blink-high') : '')}"
+                th:text="${alarm.level + ' HR ' + alarm.triggerValue}">ALARM</span>
           <button class="btn btn-sm btn-warning" type="button" onclick="ackAlarm()">Ack</button>
           <button th:if="${alarm.level.name() != 'EXTREME'}" class="btn btn-sm btn-secondary" type="button" onclick="silenceAlarm()">Silence</button>
         </span>
