@@ -77,3 +77,10 @@ jib {
     }
 }
 
+tasks.register<JavaExec>("simulateDevice") {
+    group = "application"
+    description = "Stream synthetic device vitals to a running server. Usage: --args=\"<petId> <host> <account> <device>\""
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("org.springframework.samples.petclinic.tools.DeviceSimulatorKt")
+}
+
