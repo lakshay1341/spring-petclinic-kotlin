@@ -10,3 +10,6 @@ build/
 out/
 
 .kotlin
+
+# graphify knowledge-graph build artifacts
+graphify-out/
