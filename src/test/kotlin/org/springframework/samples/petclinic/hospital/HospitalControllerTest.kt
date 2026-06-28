@@ -37,6 +37,12 @@ class HospitalControllerTest {
     @MockitoBean
     private lateinit var alarmResponse: AlarmResponseService
 
+    @MockitoBean
+    private lateinit var vitalSamples: VitalSampleRepository
+
+    @MockitoBean
+    private lateinit var waveformRing: org.springframework.samples.petclinic.hospital.ws.WaveformRing
+
     @Test
     fun admitRedirectsToMonitor() {
         mockMvc.perform(post("/pets/1/admit"))

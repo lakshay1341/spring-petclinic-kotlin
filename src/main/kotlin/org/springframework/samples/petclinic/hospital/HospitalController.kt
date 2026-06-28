@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.hospital
 
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
+import org.springframework.samples.petclinic.hospital.ws.WaveformRing
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -31,7 +32,9 @@ class HospitalController(
     val admissionService: AdmissionService,
     val alarmEngine: AlarmEngine,
     val alarmEvents: AlarmEventRepository,
-    val alarmResponse: AlarmResponseService
+    val alarmResponse: AlarmResponseService,
+    val vitalSamples: VitalSampleRepository,
+    val waveformRing: WaveformRing
 ) {
 
     companion object {
@@ -101,6 +104,35 @@ class HospitalController(
         return mapOf(
             "heartRate" to admission?.latestHeartRate,
             "lastVitalAt" to admission?.lastVitalAt?.toString()
+        )
+    }
+
+    @GetMapping("/hospital/{petId}/vitals/series", produces = ["application/json"])
+    @ResponseBody
+    fun vitalSeries(@PathVariable petId: Int): Map<String, Any> {
+        val admission = admissions.findByPetIdAndDischargedAtIsNull(petId)
+        val recent = admission?.id?.let {
+            vitalSamples.findTop240ByAdmissionIdAndMetricOrderBySampledAtDesc(it, "HR")
+        } ?: emptyList()
+        // Chronological, with null sample_value kept as null so uPlot breaks the line over a GAP
+        // instead of drawing a misleading straight segment across missing data.
+        val chrono = recent.asReversed()
+        return mapOf(
+            "t" to chrono.map { it.sampledAt.epochSecond },
+            "hr" to chrono.map { it.sampleValue }
+        )
+    }
+
+    @GetMapping("/hospital/{petId}/waveform", produces = ["application/json"])
+    @ResponseBody
+    fun waveform(@PathVariable petId: Int): Map<String, Any> {
+        val admission = admissions.findByPetIdAndDischargedAtIsNull(petId)
+        val snap = admission?.id?.let { waveformRing.snapshot(it) }
+        // ageMs lets the UI show NO SIGNAL rather than a frozen trace; -1 = no data at all.
+        return mapOf(
+            "values" to (snap?.values ?: DoubleArray(0)),
+            "period" to (snap?.period ?: 0.0),
+            "ageMs" to (snap?.ageMs ?: -1L)
         )
     }
 
