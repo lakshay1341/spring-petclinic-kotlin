@@ -18,6 +18,9 @@ data class CensusRow(
     val cage: String?,
     val ward: String?,
     val heartRate: Int?,
+    val spo2: Int?,
+    val rr: Int?,
+    val temp: Int?,
     val lastVitalAt: String?,
     val ageSeconds: Long?,
     val stale: Boolean,
@@ -25,7 +28,9 @@ data class CensusRow(
     val state: String?,
     val ackedBy: String?,
     val silencedUntil: String?,
-    val escalated: Boolean
+    val escalated: Boolean,
+    val alarmMetric: String?,
+    val alarmValue: Int?
 )
 
 @Controller
@@ -85,7 +90,9 @@ class HospitalController(
         val now = Instant.now()
         // ponytail: N+1 open-alarm lookup per active admission; fine at ward scale, batch if a ward grows to hundreds.
         return admissions.findByDischargedAtIsNull().map { a ->
-            val alarm = a.id?.let { alarmEvents.findByAdmissionIdAndMetricAndState(it, "HR", "OPEN") }
+            // Worst open alarm across all metrics (a pet may breach HR and SpO2 at once).
+            val open = a.id?.let { alarmEvents.findByAdmissionIdAndState(it, "OPEN") } ?: emptyList()
+            val alarm = open.maxByOrNull { levelRank(it.level) }
             val age = a.lastVitalAt?.let { Duration.between(it, now).seconds }
             val stale = age == null || age > STALE_SECONDS
             val escalated = alarm != null && alarm.level == AlarmLevel.EXTREME && alarm.ackedAt == null &&
@@ -93,8 +100,11 @@ class HospitalController(
             // runCatching: PetRepository.findById throws on a missing pet; one bad row must not 500 the census.
             val petName = a.petId?.let { runCatching { pets.findById(it).name }.getOrNull() }
             CensusRow(
-                a.petId, petName, a.cage, a.ward, a.latestHeartRate, a.lastVitalAt?.toString(), age, stale,
-                alarm?.level?.name, alarm?.state, alarm?.ackedBy, alarm?.silencedUntil?.toString(), escalated
+                a.petId, petName, a.cage, a.ward,
+                a.latestHeartRate, latest(a.id, "SpO2"), latest(a.id, "RR"), latest(a.id, "Temp"),
+                a.lastVitalAt?.toString(), age, stale,
+                alarm?.level?.name, alarm?.state, alarm?.ackedBy, alarm?.silencedUntil?.toString(), escalated,
+                alarm?.metric, alarm?.triggerValue
             )
         }.sortedWith(compareBy({ rank(it) }, { it.cage ?: "" }))
     }
@@ -107,6 +117,17 @@ class HospitalController(
         else -> 4
     }
 
+    private fun levelRank(level: AlarmLevel?): Int = when (level) {
+        AlarmLevel.EXTREME -> 3
+        AlarmLevel.HIGH, AlarmLevel.LOW -> 2
+        else -> 0
+    }
+
+    private fun latest(admissionId: Int?, metric: String): Int? =
+        admissionId?.let {
+            vitalSamples.findFirstByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(it, metric)?.sampleValue
+        }
+
     @GetMapping("/hospital/{petId}")
     fun monitor(@PathVariable petId: Int, model: MutableMap<String, Any>): String {
         model["petId"] = petId
@@ -114,7 +135,7 @@ class HospitalController(
         admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { admission ->
             model["admission"] = admission
             admission.id?.let { id ->
-                alarmEvents.findByAdmissionIdAndMetricAndState(id, "HR", "OPEN")?.let { model["alarm"] = it }
+                model["alarms"] = alarmEvents.findByAdmissionIdAndState(id, "OPEN")
             }
         }
         return "hospital/monitor"
@@ -123,7 +144,7 @@ class HospitalController(
     @PostMapping("/hospital/{petId}/vitals")
     fun pushVital(@PathVariable petId: Int, @RequestParam(required = false) heartRate: Int?): String {
         admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
-            alarmEngine.ingest(it, heartRate)
+            alarmEngine.ingest(it, "HR", heartRate)
         }
         return "redirect:/hospital/$petId"
     }
@@ -134,16 +155,19 @@ class HospitalController(
         val admission = admissions.findByPetIdAndDischargedAtIsNull(petId)
         return mapOf(
             "heartRate" to admission?.latestHeartRate,
+            "spo2" to latest(admission?.id, "SpO2"),
+            "rr" to latest(admission?.id, "RR"),
+            "temp" to latest(admission?.id, "Temp"),
             "lastVitalAt" to admission?.lastVitalAt?.toString()
         )
     }
 
     @GetMapping("/hospital/{petId}/vitals/series", produces = ["application/json"])
     @ResponseBody
-    fun vitalSeries(@PathVariable petId: Int): Map<String, Any> {
+    fun vitalSeries(@PathVariable petId: Int, @RequestParam(defaultValue = "HR") metric: String): Map<String, Any> {
         val admission = admissions.findByPetIdAndDischargedAtIsNull(petId)
         val recent = admission?.id?.let {
-            vitalSamples.findTop240ByAdmissionIdAndMetricOrderBySampledAtDesc(it, "HR")
+            vitalSamples.findTop240ByAdmissionIdAndMetricOrderBySampledAtDesc(it, metric)
         } ?: emptyList()
         // Chronological, with null sample_value kept as null so uPlot breaks the line over a GAP
         // instead of drawing a misleading straight segment across missing data.

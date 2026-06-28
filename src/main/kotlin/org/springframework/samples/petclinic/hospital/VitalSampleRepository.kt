@@ -15,4 +15,9 @@ interface VitalSampleRepository : Repository<VitalSample, Int> {
         admissionId: Int,
         metric: String
     ): List<VitalSample>
+
+    fun findFirstByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(
+        admissionId: Int,
+        metric: String
+    ): VitalSample?
 }

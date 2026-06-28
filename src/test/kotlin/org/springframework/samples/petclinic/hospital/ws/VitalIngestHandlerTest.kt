@@ -51,7 +51,7 @@ class VitalIngestHandlerTest {
 
         handler.handleTextMessage(s, TextMessage(json))
 
-        verify(alarmEngine, times(1)).ingest(anyObject(), eq(142), eq("obs-9"))
+        verify(alarmEngine, times(1)).ingest(anyObject(), eq("HR") ?: "HR", eq(142), eq("obs-9"))
         val cap = ArgumentCaptor.forClass(TextMessage::class.java)
         verify(s).sendMessage(cap.capture())
         assert(cap.value.payload.contains("obs-9"))
@@ -65,7 +65,7 @@ class VitalIngestHandlerTest {
 
         handler.handleTextMessage(s, TextMessage(json))
 
-        verify(alarmEngine, never()).ingest(anyObject(), anyObject(), anyObject())
+        verify(alarmEngine, never()).ingest(anyObject(), anyObject(), anyObject(), anyObject())
         verify(s).sendMessage(anyObject())
     }
 
@@ -74,7 +74,7 @@ class VitalIngestHandlerTest {
         val admission = PetAdmission().apply { id = 1; petId = 7; deviceUuid = "dev-1" }
         given(admissions.findByDeviceUuidAndDischargedAtIsNull("dev-1")).willReturn(admission)
         willThrow(DataIntegrityViolationException("dup"))
-            .given(alarmEngine).ingest(anyObject(), eq(142), eq("dup-1"))
+            .given(alarmEngine).ingest(anyObject(), eq("HR") ?: "HR", eq(142), eq("dup-1"))
         val s = session()
         val json = """{"resourceType":"Observation","id":"dup-1","code":{"coding":[{"code":"8867-4"}]},"valueQuantity":{"value":142}}"""
 
@@ -95,5 +95,17 @@ class VitalIngestHandlerTest {
         val snap = waveformRing.snapshot(1)!!
         assert(snap.values.toList() == listOf(10.0, 20.0, 30.0))
         verify(s).sendMessage(anyObject()) // still ACKed
+    }
+
+    @Test
+    fun spo2ObservationRoutesToSpo2Metric() {
+        val admission = PetAdmission().apply { id = 1; petId = 7; deviceUuid = "dev-1" }
+        given(admissions.findByDeviceUuidAndDischargedAtIsNull("dev-1")).willReturn(admission)
+        val s = session()
+        val json = """{"resourceType":"Observation","id":"o-spo2","code":{"coding":[{"code":"2708-6"}]},"valueQuantity":{"value":95}}"""
+
+        handler.handleTextMessage(s, TextMessage(json))
+
+        verify(alarmEngine, times(1)).ingest(anyObject(), eq("SpO2") ?: "SpO2", eq(95), eq("o-spo2"))
     }
 }

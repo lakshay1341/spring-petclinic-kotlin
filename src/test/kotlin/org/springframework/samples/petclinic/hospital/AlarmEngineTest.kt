@@ -38,7 +38,7 @@ class AlarmEngineTest {
     fun extremeLowFiresImmediatelyWithoutDebounce() {
         given(events.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(null)
         // 90 <= lowExtreme(100) => EXTREME, must fire on the first sample
-        engine.ingest(admission(), 90)
+        engine.ingest(admission(), "HR", 90)
         verify(events, times(1)).save(anyObject())
     }
 
@@ -48,7 +48,7 @@ class AlarmEngineTest {
         given(samples.findTop3ByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(1, "HR"))
             .willReturn(listOf(sample(130), sample(130), sample(130)))
         // 130 is LOW advisory (between lowExtreme 100 and low 140) for a cat
-        engine.ingest(admission(), 130)
+        engine.ingest(admission(), "HR", 130)
         verify(events, times(1)).save(anyObject())
     }
 
@@ -57,7 +57,7 @@ class AlarmEngineTest {
         given(events.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(null)
         given(samples.findTop3ByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(1, "HR"))
             .willReturn(listOf(sample(130), sample(130)))
-        engine.ingest(admission(), 130)
+        engine.ingest(admission(), "HR", 130)
         verify(events, never()).save(anyObject())
     }
 
@@ -66,7 +66,17 @@ class AlarmEngineTest {
         val open = AlarmEvent().apply { admissionId = 1; metric = "HR"; level = AlarmLevel.EXTREME; state = "OPEN" }
         given(events.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(open)
         // null = gap: must not close the open alarm
-        engine.ingest(admission(), null)
+        engine.ingest(admission(), "HR", null)
         verify(events, never()).save(anyObject())
+    }
+
+    @Test
+    fun spo2LowExtremeFiresImmediately() {
+        val spo2Limit = AlarmLimit().apply { admissionId = 1; metric = "SpO2"; lowExtreme = 85; low = 90; high = 101; highExtreme = 101 }
+        given(limits.findByAdmissionIdAndMetric(1, "SpO2")).willReturn(spo2Limit)
+        given(events.findByAdmissionIdAndMetricAndState(1, "SpO2", "OPEN")).willReturn(null)
+        // 80 <= lowExtreme(85) => EXTREME, fires on the first sample
+        engine.ingest(admission(), "SpO2", 80)
+        verify(events, times(1)).save(anyObject())
     }
 }

@@ -46,7 +46,7 @@ class AdmissionServiceTest {
         assertNotNull(result)
         verify(admissions, times(1)).save(anyObject())
         verify(adtEvents, times(1)).save(anyObject())
-        verify(alarmLimits, times(1)).save(anyObject())
+        verify(alarmLimits, times(3)).save(anyObject()) // HR, RR, SpO2 (Temp deferred)
     }
 
     @Test

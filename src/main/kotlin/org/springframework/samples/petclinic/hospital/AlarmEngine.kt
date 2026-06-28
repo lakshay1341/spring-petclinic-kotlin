@@ -22,15 +22,14 @@ class AlarmEngine(
 ) {
 
     companion object {
-        const val METRIC = "HR"
         const val DEBOUNCE = 3
     }
 
     @Transactional
-    fun ingest(admission: PetAdmission, value: Int?, observationId: String? = null) {
+    fun ingest(admission: PetAdmission, metric: String, value: Int?, observationId: String? = null) {
         val sample = VitalSample()
         sample.admissionId = admission.id
-        sample.metric = METRIC
+        sample.metric = metric
         sample.sampleValue = value
         sample.observationId = observationId
         sample.sampledAt = Instant.now()
@@ -39,38 +38,40 @@ class AlarmEngine(
         // GAP: freeze alarm state, do not update the cached vital.
         if (value == null) return
 
-        admission.latestHeartRate = value
+        // ponytail: only HR is column-cached (latest_heart_rate); other metrics are read on demand
+        // from the durable series, so multi-vital needs no schema change.
+        if (metric == "HR") admission.latestHeartRate = value
         admission.lastVitalAt = Instant.now()
         admissions.save(admission)
 
-        evaluate(admission.id!!, value)
+        evaluate(admission.id!!, metric, value)
     }
 
-    private fun evaluate(admissionId: Int, value: Int) {
-        val limit = limits.findByAdmissionIdAndMetric(admissionId, METRIC) ?: return
+    private fun evaluate(admissionId: Int, metric: String, value: Int) {
+        val limit = limits.findByAdmissionIdAndMetric(admissionId, metric) ?: return
         val level = classify(value, limit)
-        val open = events.findByAdmissionIdAndMetricAndState(admissionId, METRIC, "OPEN")
+        val open = events.findByAdmissionIdAndMetricAndState(admissionId, metric, "OPEN")
 
         when {
             level == AlarmLevel.EXTREME ->
-                if (open == null) open(admissionId, level, value)
+                if (open == null) open(admissionId, metric, level, value)
             level == AlarmLevel.HIGH || level == AlarmLevel.LOW ->
-                if (open == null && recentRealAllBreach(admissionId, limit)) open(admissionId, level!!, value)
+                if (open == null && recentRealAllBreach(admissionId, metric, limit)) open(admissionId, metric, level!!, value)
             else ->
-                if (open != null && recentRealAllInRange(admissionId, limit)) close(open)
+                if (open != null && recentRealAllInRange(admissionId, metric, limit)) close(open)
         }
     }
 
-    private fun recentReal(admissionId: Int): List<VitalSample> =
-        samples.findTop3ByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(admissionId, METRIC)
+    private fun recentReal(admissionId: Int, metric: String): List<VitalSample> =
+        samples.findTop3ByAdmissionIdAndMetricAndSampleValueNotNullOrderBySampledAtDesc(admissionId, metric)
 
-    private fun recentRealAllBreach(admissionId: Int, limit: AlarmLimit): Boolean {
-        val last = recentReal(admissionId)
+    private fun recentRealAllBreach(admissionId: Int, metric: String, limit: AlarmLimit): Boolean {
+        val last = recentReal(admissionId, metric)
         return last.size >= DEBOUNCE && last.take(DEBOUNCE).all { classify(it.sampleValue!!, limit) != null }
     }
 
-    private fun recentRealAllInRange(admissionId: Int, limit: AlarmLimit): Boolean {
-        val last = recentReal(admissionId)
+    private fun recentRealAllInRange(admissionId: Int, metric: String, limit: AlarmLimit): Boolean {
+        val last = recentReal(admissionId, metric)
         return last.size >= DEBOUNCE && last.take(DEBOUNCE).all { classify(it.sampleValue!!, limit) == null }
     }
 
@@ -81,10 +82,10 @@ class AlarmEngine(
         else -> null
     }
 
-    private fun open(admissionId: Int, level: AlarmLevel, value: Int) {
+    private fun open(admissionId: Int, metric: String, level: AlarmLevel, value: Int) {
         val e = AlarmEvent()
         e.admissionId = admissionId
-        e.metric = METRIC
+        e.metric = metric
         e.level = level
         e.state = "OPEN"
         e.startedAt = Instant.now()

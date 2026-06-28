@@ -7,7 +7,7 @@
 
   <table class="table table-striped" id="census">
     <thead>
-      <tr><th>Cage</th><th>Pet</th><th>HR</th><th>Freshness</th><th>Alarm</th><th>Ack</th><th></th></tr>
+      <tr><th>Cage</th><th>Pet</th><th>HR</th><th>SpO2</th><th>RR</th><th>Temp</th><th>Freshness</th><th>Alarm</th><th>Ack</th><th></th></tr>
     </thead>
     <tbody id="census-body"></tbody>
   </table>
@@ -77,7 +77,7 @@
         const fresh = r.stale
           ? ('stale ' + Math.floor((r.ageSeconds || 0) / 60) + 'm')
           : ((r.ageSeconds == null ? '—' : r.ageSeconds + 's') + ' ago');
-        const alarmTxt = r.level ? (r.level + ' HR ' + (r.heartRate == null ? '' : r.heartRate) + (r.ackedBy ? ' (ack ' + r.ackedBy + ')' : '')) : '—';
+        const alarmTxt = r.level ? (r.level + ' ' + (r.alarmMetric || '') + ' ' + (r.alarmValue == null ? '' : r.alarmValue) + (r.ackedBy ? ' (ack ' + r.ackedBy + ')' : '')) : '—';
         let actions = '';
         if (r.state === 'OPEN') {
           actions = '<button onclick="ack(' + r.petId + ')">Ack</button>';
@@ -87,6 +87,9 @@
           '<td>' + (r.cage || '—') + '</td>' +
           '<td><a href="/hospital/' + r.petId + '">' + (r.petName || r.petId) + '</a></td>' +
           '<td>' + (r.heartRate == null ? '—' : r.heartRate) + '</td>' +
+          '<td>' + (r.spo2 == null ? '—' : r.spo2) + '</td>' +
+          '<td>' + (r.rr == null ? '—' : r.rr) + '</td>' +
+          '<td>' + (r.temp == null ? '—' : r.temp) + '</td>' +
           '<td>' + fresh + '</td>' +
           '<td>' + alarmTxt + '</td>' +
           '<td>' + (r.ackedBy || '') + '</td>' +

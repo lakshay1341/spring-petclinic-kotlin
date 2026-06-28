@@ -75,15 +75,19 @@ class AdmissionService(
 
     private fun seedAlarmLimits(admissionId: Int?, petId: Int) {
         val species = pets.findById(petId).type?.name?.lowercase() ?: ""
-        val hr = SpeciesLimits.hr(species)
-        val limit = AlarmLimit()
-        limit.admissionId = admissionId
-        limit.metric = "HR"
-        limit.lowExtreme = hr[0]
-        limit.low = hr[1]
-        limit.high = hr[2]
-        limit.highExtreme = hr[3]
-        alarmLimits.save(limit)
+        // Temp is intentionally NOT seeded: it is ingested + displayed but not alarmed until a real
+        // device confirms its unit (degC vs degF) — a wrong band would misfire. Add it then.
+        val byMetric = mapOf("HR" to SpeciesLimits.hr(species), "RR" to SpeciesLimits.rr(species), "SpO2" to SpeciesLimits.spo2())
+        byMetric.forEach { (metric, t) ->
+            val limit = AlarmLimit()
+            limit.admissionId = admissionId
+            limit.metric = metric
+            limit.lowExtreme = t[0]
+            limit.low = t[1]
+            limit.high = t[2]
+            limit.highExtreme = t[3]
+            alarmLimits.save(limit)
+        }
     }
 
     private fun audit(correlationId: String, eventType: String, petId: Int, admissionId: Int?) {

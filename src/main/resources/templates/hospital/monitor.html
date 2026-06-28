@@ -33,14 +33,19 @@
       <tr><th>Admitted</th><td th:text="*{admittedAt}"></td></tr>
       <tr><th>Discharged</th><td th:text="*{dischargedAt}"></td></tr>
       <tr><th>Heart rate</th><td><span id="hr" th:text="*{latestHeartRate}">—</span> bpm</td></tr>
-      <tr><th>Alarm</th><td>
-        <span th:if="${alarm == null}">none</span>
-        <span th:if="${alarm != null}">
+      <tr><th>SpO2</th><td><span id="spo2">—</span> %</td></tr>
+      <tr><th>Resp rate</th><td><span id="rr">—</span> /min</td></tr>
+      <tr><th>Temp</th><td><span id="temp">—</span></td></tr>
+      <tr><th>Alarms</th><td>
+        <span th:if="${alarms == null or #lists.isEmpty(alarms)}">none</span>
+        <span th:each="alarm : ${alarms}" style="margin-right:6px;">
           <span class="alarm-badge"
                 th:classappend="${'lvl-' + alarm.level.name() + (alarm.ackedAt == null ? (alarm.level.name() == 'EXTREME' ? ' blink-crit' : ' blink-high') : '')}"
-                th:text="${alarm.level + ' HR ' + alarm.triggerValue}">ALARM</span>
-          <button class="btn btn-sm btn-warning" type="button" onclick="ackAlarm()">Ack</button>
-          <button th:if="${alarm.level.name() != 'EXTREME'}" class="btn btn-sm btn-secondary" type="button" onclick="silenceAlarm()">Silence</button>
+                th:text="${alarm.level + ' ' + alarm.metric + ' ' + alarm.triggerValue}">ALARM</span>
+        </span>
+        <span th:if="${alarms != null and not #lists.isEmpty(alarms)}">
+          <button class="btn btn-sm btn-warning" type="button" onclick="ackAlarm()">Ack all</button>
+          <button class="btn btn-sm btn-secondary" type="button" onclick="silenceAlarm()">Silence</button>
         </span>
       </td></tr>
     </table>
@@ -74,6 +79,9 @@
       setInterval(async () => {
         const v = await (await fetch('/hospital/' + petId + '/vitals')).json();
         document.getElementById('hr').textContent = (v.heartRate ?? '—');
+        document.getElementById('spo2').textContent = (v.spo2 ?? '—');
+        document.getElementById('rr').textContent = (v.rr ?? '—');
+        document.getElementById('temp').textContent = (v.temp ?? '—');
       }, 2000);
 
       const hrPlot = new uPlot({
