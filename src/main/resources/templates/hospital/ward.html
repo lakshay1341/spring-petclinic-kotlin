@@ -2,27 +2,36 @@
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{fragments/layout :: layout (~{::body},'hospital')}">
 <body>
-  <h2>Ward Census</h2>
-  <button id="sound-toggle" class="btn btn-primary" type="button">Enable sound</button>
+  <style>
+    .vs { background:#0e0e0e; color:#e4e2e1; padding:16px; font-family:system-ui,sans-serif; min-height:80vh; }
+    .vs h2 { color:#e4e2e1; }
+    .vs .btn-vs { background:#00e5ff; color:#000; border:none; padding:6px 14px; font-weight:600; cursor:pointer; }
+    .vs-table { width:100%; border-collapse:collapse; font-family:'JetBrains Mono',ui-monospace,monospace; }
+    .vs-table th { text-align:left; color:#bac9cc; text-transform:uppercase; font-size:12px; border-bottom:1px solid #3b494c; padding:6px 10px; }
+    .vs-table td { padding:6px 10px; border-bottom:1px solid #1b1c1c; }
+    .vs-table tr.lvl-EXTREME > td { background:#ff1744; color:#fff; }
+    .vs-table tr.lvl-HIGH > td, .vs-table tr.lvl-LOW > td { background:#ff9100; color:#000; }
+    .vs-table tr.stale > td { color:#849396; font-style:italic; }
+    .vs-table tr.blink-crit > td { animation:vsblink .6s step-start infinite; }
+    .vs-table tr.blink-high > td { animation:vsblink 1.2s step-start infinite; }
+    @keyframes vsblink { 50% { opacity:.35; } }
+    .vs-table a { color:#00e5ff; text-decoration:none; }
+    .vs-table tr.lvl-EXTREME a, .vs-table tr.lvl-HIGH a, .vs-table tr.lvl-LOW a { color:inherit; }
+    .vs-table button { background:#2a2a2a; color:#e4e2e1; border:1px solid #3b494c; cursor:pointer; }
+  </style>
 
-  <table class="table table-striped" id="census">
+  <div class="vs">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>Ward Census</h2>
+    <button id="sound-toggle" class="btn-vs" type="button">Enable sound</button>
+  </div>
+
+  <table class="vs-table" id="census">
     <thead>
       <tr><th>Cage</th><th>Pet</th><th>HR</th><th>SpO2</th><th>RR</th><th>Temp</th><th>Freshness</th><th>Alarm</th><th>Ack</th><th></th></tr>
     </thead>
     <tbody id="census-body"></tbody>
   </table>
-
-  <style>
-    /* Priority colours match the reference device (IEC 60601-1-8): CRITICAL=red, HIGH=orange.
-       Colour encodes SEVERITY; direction (high vs low) is carried by the label text. */
-    tr.lvl-EXTREME > td { background:#dc3545; color:#fff; text-transform:uppercase; }
-    tr.lvl-HIGH > td, tr.lvl-LOW > td { background:#fd7e14; color:#fff; text-transform:uppercase; }
-    tr.stale > td { color:#888; font-style:italic; }
-    /* Every OPEN un-acked alarm blinks; faster for CRITICAL than HIGH. Ack stops the blink. */
-    tr.blink-crit > td { animation:blink .6s step-start infinite; }
-    tr.blink-high > td { animation:blink 1.2s step-start infinite; }
-    @keyframes blink { 50% { opacity:.35; } }
-  </style>
 
   <script th:inline="javascript">
     let soundOn = false, audioCtx = null;
@@ -55,8 +64,8 @@
 
     function isSounding(r, now) {
       if (r.state !== 'OPEN' || !r.level) return false;
-      if (r.level === 'EXTREME') return r.ackedBy == null;                 // EXTREME nags until acked, never silenced
-      if (r.silencedUntil && now < Date.parse(r.silencedUntil)) return false; // advisory within its silence lease
+      if (r.level === 'EXTREME') return r.ackedBy == null;
+      if (r.silencedUntil && now < Date.parse(r.silencedUntil)) return false;
       return true;
     }
 
@@ -106,5 +115,6 @@
     setInterval(poll, 2000);
     poll();
   </script>
+  </div>
 </body>
 </html>

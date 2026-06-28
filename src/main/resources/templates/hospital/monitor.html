@@ -2,118 +2,130 @@
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{fragments/layout :: layout (~{::body},'hospital')}">
 <body>
-  <h2>Monitor: <span th:text="${petName} ?: ('pet #' + ${petId})">pet</span></h2>
-
   <style>
-    /* Alarm badge priority colours match the reference device: CRITICAL=red, HIGH=orange.
-       Blinks while OPEN and un-acknowledged; steady once acked. */
-    .alarm-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:bold; text-transform:uppercase; color:#fff; }
-    .alarm-badge.lvl-EXTREME { background:#dc3545; }
-    .alarm-badge.lvl-HIGH, .alarm-badge.lvl-LOW { background:#fd7e14; }
-    .blink-crit { animation:blink .6s step-start infinite; }
-    .blink-high { animation:blink 1.2s step-start infinite; }
-    @keyframes blink { 50% { opacity:.35; } }
+    .vs { background:#0e0e0e; color:#e4e2e1; padding:16px; font-family:system-ui,sans-serif; }
+    .vs h2,.vs h4 { color:#e4e2e1; }
+    .vs .muted { color:#849396; }
+    .vs .mono { font-family:'JetBrains Mono',ui-monospace,monospace; }
+    .vs .tiles { display:flex; gap:12px; margin:12px 0; flex-wrap:wrap; }
+    .vs .tile { background:#1f2020; border:1px solid #3b494c; min-width:140px; padding:10px 14px; }
+    .vs .tile-label { font-size:12px; letter-spacing:.05em; color:#bac9cc; text-transform:uppercase; }
+    .vs .tile-val { font-size:34px; font-weight:600; font-family:'JetBrains Mono',ui-monospace,monospace; }
+    .vs .tile .unit { font-size:13px; color:#849396; margin-left:4px; }
+    .vs .tile.lvl-EXTREME { background:#ff1744; color:#fff; border-color:#ff1744; }
+    .vs .tile.lvl-HIGH, .vs .tile.lvl-LOW { background:#ff9100; color:#000; border-color:#ff9100; }
+    .vs .panel { background:#1f2020; border:1px solid #3b494c; padding:12px; margin:12px 0; }
+    .vs .alarm-badge { display:inline-block; padding:3px 10px; margin:2px; font-weight:bold; text-transform:uppercase; color:#fff; font-family:'JetBrains Mono',ui-monospace,monospace; }
+    .vs .alarm-badge.lvl-EXTREME { background:#ff1744; }
+    .vs .alarm-badge.lvl-HIGH, .vs .alarm-badge.lvl-LOW { background:#ff9100; color:#000; }
+    .vs .blink-crit { animation:vsblink .6s step-start infinite; }
+    .vs .blink-high { animation:vsblink 1.2s step-start infinite; }
+    @keyframes vsblink { 50% { opacity:.35; } }
+    .vs .wave-wrap { position:relative; background:#000; border:1px solid #3b494c; }
+    .vs #wavestatus { position:absolute; top:8px; left:12px; color:#ff1744; font-weight:bold; font-family:'JetBrains Mono',ui-monospace,monospace; z-index:2; }
+    .vs input.form-control { background:#0e0e0e; color:#e4e2e1; border:1px solid #3b494c; }
+    .vs .btn-vs { background:#00e5ff; color:#000; border:none; padding:6px 14px; font-weight:600; cursor:pointer; }
+    .vs .btn-danger-vs { background:#ff1744; color:#fff; border:none; padding:6px 14px; font-weight:600; cursor:pointer; }
   </style>
 
+  <div class="vs">
+  <h2>Monitor: <span th:text="${petName} ?: ('pet #' + ${petId})">pet</span></h2>
+
   <div th:if="${admission == null}">
-    <p>No admission for this pet. Admit and bind a device to start monitoring.</p>
+    <p class="muted">No admission for this pet. Admit and bind a device to start monitoring.</p>
     <form th:action="@{/pets/{petId}/admit(petId=${petId})}" method="post" class="row g-2">
       <div class="col-auto"><input class="form-control" name="ward" placeholder="Ward"></div>
       <div class="col-auto"><input class="form-control" name="cage" placeholder="Cage"></div>
       <div class="col-auto"><input class="form-control" name="deviceUuid" placeholder="Device UUID"></div>
-      <div class="col-auto"><button class="btn btn-primary" type="submit">Admit</button></div>
+      <div class="col-auto"><button class="btn-vs" type="submit">Admit</button></div>
     </form>
   </div>
 
   <div th:if="${admission != null}" th:object="${admission}">
-    <table class="table table-striped">
-      <tr><th>Status</th><td th:text="*{dischargedAt == null} ? 'ADMITTED' : 'DISCHARGED'"></td></tr>
-      <tr><th>Ward / Cage</th><td th:text="(*{ward} ?: '—') + ' / ' + (*{cage} ?: '—')"></td></tr>
-      <tr><th>Device</th><td th:text="*{deviceUuid} ?: 'not bound'"></td></tr>
-      <tr><th>Admitted</th><td th:text="*{admittedAt}"></td></tr>
-      <tr><th>Discharged</th><td th:text="*{dischargedAt}"></td></tr>
-      <tr><th>Heart rate</th><td><span id="hr" th:text="*{latestHeartRate}">—</span> bpm</td></tr>
-      <tr><th>SpO2</th><td><span id="spo2">—</span> %</td></tr>
-      <tr><th>Resp rate</th><td><span id="rr">—</span> /min</td></tr>
-      <tr><th>Temp</th><td><span id="temp">—</span></td></tr>
-      <tr><th>Alarms</th><td>
-        <span th:if="${alarms == null or #lists.isEmpty(alarms)}">none</span>
-        <span th:each="alarm : ${alarms}" style="margin-right:6px;">
-          <span class="alarm-badge"
-                th:classappend="${'lvl-' + alarm.level.name() + (alarm.ackedAt == null ? (alarm.level.name() == 'EXTREME' ? ' blink-crit' : ' blink-high') : '')}"
-                th:text="${alarm.level + ' ' + alarm.metric + ' ' + alarm.triggerValue}">ALARM</span>
-        </span>
-        <span th:if="${alarms != null and not #lists.isEmpty(alarms)}">
-          <button class="btn btn-sm btn-warning" type="button" onclick="ackAlarm()">Ack all</button>
-          <button class="btn btn-sm btn-secondary" type="button" onclick="silenceAlarm()">Silence</button>
-        </span>
-      </td></tr>
-    </table>
+    <p class="muted mono">
+      <span th:text="*{dischargedAt == null} ? 'ADMITTED' : 'DISCHARGED'">ADMITTED</span>
+      · ward <span th:text="*{ward} ?: '—'"></span> / cage <span th:text="*{cage} ?: '—'"></span>
+      · device <span th:text="*{deviceUuid} ?: 'not bound'"></span>
+    </p>
 
-    <form th:if="*{dischargedAt == null}" th:action="@{/hospital/{petId}/device(petId=${petId})}" method="post" class="row g-2 mb-2">
-      <div class="col-auto"><input class="form-control" name="ward" th:value="*{ward}" placeholder="Ward"></div>
-      <div class="col-auto"><input class="form-control" name="cage" th:value="*{cage}" placeholder="Cage"></div>
-      <div class="col-auto"><input class="form-control" name="deviceUuid" th:value="*{deviceUuid}" placeholder="Device UUID"></div>
-      <div class="col-auto"><button class="btn btn-outline-primary" type="submit">Save binding</button></div>
-    </form>
+    <div class="tiles">
+      <div class="tile" th:classappend="${alarmByMetric != null and alarmByMetric.containsKey('HR') ? 'lvl-' + alarmByMetric['HR'].level.name() : ''}">
+        <div class="tile-label">HR</div><div class="tile-val"><span id="hr" th:text="*{latestHeartRate} ?: '--'">--</span><span class="unit">bpm</span></div>
+      </div>
+      <div class="tile" th:classappend="${alarmByMetric != null and alarmByMetric.containsKey('SpO2') ? 'lvl-' + alarmByMetric['SpO2'].level.name() : ''}">
+        <div class="tile-label">SpO2</div><div class="tile-val"><span id="spo2">--</span><span class="unit">%</span></div>
+      </div>
+      <div class="tile" th:classappend="${alarmByMetric != null and alarmByMetric.containsKey('RR') ? 'lvl-' + alarmByMetric['RR'].level.name() : ''}">
+        <div class="tile-label">RR</div><div class="tile-val"><span id="rr">--</span><span class="unit">/min</span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Temp</div><div class="tile-val"><span id="temp">--</span></div>
+      </div>
+    </div>
 
-    <form th:if="*{dischargedAt == null}" th:action="@{/pets/{petId}/discharge(petId=${petId})}" method="post">
-      <button class="btn btn-danger" type="submit">Discharge</button>
-    </form>
+    <div class="panel">
+      <h4>Alarms</h4>
+      <span th:if="${alarms == null or #lists.isEmpty(alarms)}" class="muted">none</span>
+      <span th:each="alarm : ${alarms}">
+        <span class="alarm-badge"
+              th:classappend="${'lvl-' + alarm.level.name() + (alarm.ackedAt == null ? (alarm.level.name() == 'EXTREME' ? ' blink-crit' : ' blink-high') : '')}"
+              th:text="${alarm.level + ' ' + alarm.metric + ' ' + alarm.triggerValue}">ALARM</span>
+      </span>
+      <div th:if="${alarms != null and not #lists.isEmpty(alarms)}" style="margin-top:8px;">
+        <button class="btn-vs" type="button" onclick="ackAlarm()">Ack all</button>
+        <button class="btn-vs" type="button" onclick="silenceAlarm()">Silence</button>
+      </div>
+    </div>
 
-    <div th:if="*{dischargedAt == null}">
-      <h4>HR trend</h4>
+    <div class="panel" th:if="*{dischargedAt == null}">
+      <h4>Waveform <span class="muted" style="font-size:13px;">ECG</span></h4>
+      <div class="wave-wrap"><span id="wavestatus"></span><div id="wavechart"></div></div>
+      <h4 style="margin-top:12px;">HR trend</h4>
       <div id="hrchart"></div>
-      <h4>Waveform <span id="wavestatus" style="color:#c00;font-weight:bold;"></span></h4>
-      <div id="wavechart"></div>
+    </div>
+
+    <div class="panel" th:if="*{dischargedAt == null}">
+      <h4>Device binding</h4>
+      <form th:action="@{/hospital/{petId}/device(petId=${petId})}" method="post" class="row g-2 mb-2">
+        <div class="col-auto"><input class="form-control" name="ward" th:value="*{ward}" placeholder="Ward"></div>
+        <div class="col-auto"><input class="form-control" name="cage" th:value="*{cage}" placeholder="Cage"></div>
+        <div class="col-auto"><input class="form-control" name="deviceUuid" th:value="*{deviceUuid}" placeholder="Device UUID"></div>
+        <div class="col-auto"><button class="btn-vs" type="submit">Save binding</button></div>
+      </form>
+      <form th:action="@{/pets/{petId}/discharge(petId=${petId})}" method="post">
+        <button class="btn-danger-vs" type="submit">Discharge</button>
+      </form>
     </div>
 
     <link th:if="*{dischargedAt == null}" rel="stylesheet" th:href="@{/webjars/uplot/dist/uPlot.min.css}">
     <script th:if="*{dischargedAt == null}" th:src="@{/webjars/uplot/dist/uPlot.iife.min.js}"></script>
     <script th:if="*{dischargedAt == null}" th:inline="javascript">
       const petId = [[${petId}]];
-
+      const AX = { stroke:'#bac9cc', grid:{ stroke:'#26312f' }, ticks:{ stroke:'#26312f' } };
       async function ackAlarm() { await fetch('/hospital/' + petId + '/alarm/ack', { method: 'POST' }); location.reload(); }
       async function silenceAlarm() { await fetch('/hospital/' + petId + '/alarm/silence', { method: 'POST' }); location.reload(); }
-
       setInterval(async () => {
         const v = await (await fetch('/hospital/' + petId + '/vitals')).json();
-        document.getElementById('hr').textContent = (v.heartRate ?? '—');
-        document.getElementById('spo2').textContent = (v.spo2 ?? '—');
-        document.getElementById('rr').textContent = (v.rr ?? '—');
-        document.getElementById('temp').textContent = (v.temp ?? '—');
+        document.getElementById('hr').textContent = (v.heartRate ?? '--');
+        document.getElementById('spo2').textContent = (v.spo2 ?? '--');
+        document.getElementById('rr').textContent = (v.rr ?? '--');
+        document.getElementById('temp').textContent = (v.temp ?? '--');
       }, 2000);
-
-      const hrPlot = new uPlot({
-        width: 600, height: 200,
-        series: [{}, { label: 'HR', stroke: 'red', spanGaps: false }],
-        scales: { x: { time: true } }
-      }, [ [], [] ], document.getElementById('hrchart'));
-      async function pollTrend() {
-        const d = await (await fetch('/hospital/' + petId + '/vitals/series')).json();
-        hrPlot.setData([d.t, d.hr]);
-      }
+      const hrPlot = new uPlot({ width: 680, height: 160, series: [{}, { label: 'HR', stroke: '#00e5ff', spanGaps: false }], axes: [AX, AX], scales: { x: { time: true } } }, [ [], [] ], document.getElementById('hrchart'));
+      async function pollTrend() { const d = await (await fetch('/hospital/' + petId + '/vitals/series')).json(); hrPlot.setData([d.t, d.hr]); }
       setInterval(pollTrend, 2000); pollTrend();
-
-      const wavePlot = new uPlot({
-        width: 600, height: 200,
-        series: [{}, { label: 'wave', stroke: 'blue' }],
-        scales: { x: { time: false } }
-      }, [ [], [] ], document.getElementById('wavechart'));
+      const wavePlot = new uPlot({ width: 680, height: 160, series: [{}, { label: 'ECG', stroke: '#39ff14' }], axes: [AX, AX], scales: { x: { time: false } } }, [ [], [] ], document.getElementById('wavechart'));
       async function pollWave() {
         const d = await (await fetch('/hospital/' + petId + '/waveform')).json();
-        const status = document.getElementById('wavestatus');
-        if (!d.values || d.values.length === 0 || d.ageMs < 0 || d.ageMs > 2000) {
-          status.textContent = 'NO SIGNAL';
-          wavePlot.setData([ [], [] ]);
-          return;
-        }
-        status.textContent = '';
+        const st = document.getElementById('wavestatus');
+        if (!d.values || d.values.length === 0 || d.ageMs < 0 || d.ageMs > 2000) { st.textContent = 'NO SIGNAL'; wavePlot.setData([ [], [] ]); return; }
+        st.textContent = '';
         const xs = d.values.map((_, i) => i * (d.period || 1) / 1000);
         wavePlot.setData([xs, d.values]);
       }
       setInterval(pollWave, 1000); pollWave();
     </script>
+  </div>
   </div>
 </body>
 </html>

@@ -135,7 +135,9 @@ class HospitalController(
         admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { admission ->
             model["admission"] = admission
             admission.id?.let { id ->
-                model["alarms"] = alarmEvents.findByAdmissionIdAndState(id, "OPEN")
+                val open = alarmEvents.findByAdmissionIdAndState(id, "OPEN")
+                model["alarms"] = open
+                model["alarmByMetric"] = open.associateBy { it.metric }
             }
         }
         return "hospital/monitor"
