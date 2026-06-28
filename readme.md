@@ -7,7 +7,7 @@ This is a [Kotlin](https://kotlinlang.org/) version of the [spring-petclinic][] 
 ## Technologies used
 
 * Language: Kotlin
-* Core framework: Spring Boot 3 with Spring Framework 6 Kotlin support
+* Core framework: Spring Boot 4 with Spring Framework 7 Kotlin support
 * Server: Apache Tomcat
 * Web framework: Spring MVC
 * Templates: Thymeleaf and Bootstrap 5
@@ -36,6 +36,39 @@ docker run -p 8080:8080 springcommunity/spring-petclinic-kotlin
 You can then access petclinic here: [http://localhost:8080/]()
 
 <img width="1042" alt="petclinic-screenshot" src="https://user-images.githubusercontent.com/838318/29994372-7f85f6da-8fce-11e7-8896-b5aa075ac0d7.png">
+
+## Pet Hospital Monitoring (Pet-HMS)
+
+An expansion that turns the clinic into a real-time pet-hospital monitor, modeled on a production
+patient-monitoring device app. It lives in the `hospital` module and attaches to the existing
+`Owner`/`Pet` model through a single loose `petId` foreign key — the core clinic code is unchanged.
+
+### Flow
+
+1. **Provision a device** — open **Device** (`/device/setup`) and scan the QR with the monitoring
+   app; it stores the server URL + credentials, then exchanges them at `POST /oauth/token` for a
+   bearer token.
+2. **Admit & bind** — from a pet's **Monitor** page (`/hospital/{petId}`), admit the pet and bind a
+   Ward / Cage / Device UUID.
+3. **Stream** — the device opens a WebSocket to `/api/v1/fhir/{account}/{deviceUuid}/store` and
+   streams FHIR `Observation` frames (numeric HR + ECG/PPG waveform `SampledData`). The server
+   replies an `OperationOutcome` ACK; a duplicate `observation_id` is idempotently ignored.
+4. **Monitor** — the **Ward** board (`/hospital`) is a live triage census (worst-first, with HR,
+   data freshness, alarm badge, ack/silence, audible tone). The per-pet Monitor shows a live HR
+   trend and waveform (uPlot), showing **NO SIGNAL** when the stream goes stale.
+5. **Respond & discharge** — ack/silence alarms inline; discharge pushes a FHIR `Patient` inactive
+   frame back to the connected device so it stops monitoring.
+
+### Design notes
+
+- **Alarms** are species-aware, debounced (3 consecutive samples for an advisory, EXTREME fires
+  immediately) and gap-honest — a data gap never moves the alarm state toward "safe".
+- **Schema** is created via `spring.sql.init` (`db/{h2,mysql}/schema.sql`); integrity constraints
+  (the `pet_id` FK, and `correlation_id` / `observation_id` UNIQUE idempotency fences) are declared
+  at table birth.
+- **Architecture** — the app is an enforced **modular monolith**; see
+  [`docs/architecture/modules.md`](docs/architecture/modules.md). Module boundaries are verified on
+  every build by an ArchUnit test.
 
 
 ## Database configuration
