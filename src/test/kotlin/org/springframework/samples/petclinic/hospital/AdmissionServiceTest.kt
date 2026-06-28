@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.hospital
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
+
 import org.mockito.Mockito
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -56,6 +57,19 @@ class AdmissionServiceTest {
 
         verify(admissions, never()).save(anyObject())
         verify(adtEvents, never()).save(anyObject())
+    }
+
+    @Test
+    fun admitBindsWardCageDeviceOnFreshAdmission() {
+        given(adtEvents.existsByCorrelationId("c3")).willReturn(false)
+        given(admissions.findByPetIdAndDischargedAtIsNull(2)).willReturn(null)
+        given(pets.findById(2)).willReturn(dogPet())
+
+        val saved = service.admit(2, "c3", "ICU", "C1", "dev-9")!!
+
+        assert(saved.ward == "ICU")
+        assert(saved.cage == "C1")
+        assert(saved.deviceUuid == "dev-9")
     }
 
     @Test

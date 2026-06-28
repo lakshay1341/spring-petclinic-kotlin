@@ -81,7 +81,7 @@
         }
         tr.innerHTML =
           '<td>' + (r.cage || '—') + '</td>' +
-          '<td><a href="/hospital/' + r.petId + '">' + r.petId + '</a></td>' +
+          '<td><a href="/hospital/' + r.petId + '">' + (r.petName || r.petId) + '</a></td>' +
           '<td>' + (r.heartRate == null ? '—' : r.heartRate) + '</td>' +
           '<td>' + fresh + '</td>' +
           '<td>' + alarmTxt + '</td>' +

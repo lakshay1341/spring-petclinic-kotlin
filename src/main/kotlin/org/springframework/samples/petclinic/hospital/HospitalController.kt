@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.hospital
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.*
 import org.springframework.samples.petclinic.hospital.ws.WaveformRing
+import org.springframework.samples.petclinic.owner.PetRepository
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -13,6 +14,7 @@ import java.util.UUID
  */
 data class CensusRow(
     val petId: Int?,
+    val petName: String?,
     val cage: String?,
     val ward: String?,
     val heartRate: Int?,
@@ -34,7 +36,8 @@ class HospitalController(
     val alarmEvents: AlarmEventRepository,
     val alarmResponse: AlarmResponseService,
     val vitalSamples: VitalSampleRepository,
-    val waveformRing: WaveformRing
+    val waveformRing: WaveformRing,
+    val pets: PetRepository
 ) {
 
     companion object {
@@ -43,8 +46,33 @@ class HospitalController(
     }
 
     @PostMapping("/pets/{petId}/admit")
-    fun admit(@PathVariable petId: Int, @RequestParam(required = false) correlationId: String?): String {
-        admissionService.admit(petId, correlationId ?: UUID.randomUUID().toString())
+    fun admit(
+        @PathVariable petId: Int,
+        @RequestParam(required = false) correlationId: String?,
+        @RequestParam(required = false) ward: String?,
+        @RequestParam(required = false) cage: String?,
+        @RequestParam(required = false) deviceUuid: String?
+    ): String {
+        admissionService.admit(
+            petId, correlationId ?: UUID.randomUUID().toString(),
+            ward?.ifBlank { null }, cage?.ifBlank { null }, deviceUuid?.ifBlank { null }
+        )
+        return "redirect:/hospital/$petId"
+    }
+
+    @PostMapping("/hospital/{petId}/device")
+    fun bindDevice(
+        @PathVariable petId: Int,
+        @RequestParam(required = false) ward: String?,
+        @RequestParam(required = false) cage: String?,
+        @RequestParam(required = false) deviceUuid: String?
+    ): String {
+        admissions.findByPetIdAndDischargedAtIsNull(petId)?.let {
+            it.ward = ward?.ifBlank { null }
+            it.cage = cage?.ifBlank { null }
+            it.deviceUuid = deviceUuid?.ifBlank { null }
+            admissions.save(it)
+        }
         return "redirect:/hospital/$petId"
     }
 
@@ -62,8 +90,10 @@ class HospitalController(
             val stale = age == null || age > STALE_SECONDS
             val escalated = alarm != null && alarm.level == AlarmLevel.EXTREME && alarm.ackedAt == null &&
                 Duration.between(alarm.startedAt, now).seconds > ESCALATE_SECONDS
+            // runCatching: PetRepository.findById throws on a missing pet; one bad row must not 500 the census.
+            val petName = a.petId?.let { runCatching { pets.findById(it).name }.getOrNull() }
             CensusRow(
-                a.petId, a.cage, a.ward, a.latestHeartRate, a.lastVitalAt?.toString(), age, stale,
+                a.petId, petName, a.cage, a.ward, a.latestHeartRate, a.lastVitalAt?.toString(), age, stale,
                 alarm?.level?.name, alarm?.state, alarm?.ackedBy, alarm?.silencedUntil?.toString(), escalated
             )
         }.sortedWith(compareBy({ rank(it) }, { it.cage ?: "" }))
@@ -80,6 +110,7 @@ class HospitalController(
     @GetMapping("/hospital/{petId}")
     fun monitor(@PathVariable petId: Int, model: MutableMap<String, Any>): String {
         model["petId"] = petId
+        runCatching { pets.findById(petId).name }.getOrNull()?.let { model["petName"] = it }
         admissions.findFirstByPetIdOrderByIdDesc(petId)?.let { admission ->
             model["admission"] = admission
             admission.id?.let { id ->

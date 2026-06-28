@@ -24,7 +24,13 @@ class AdmissionService(
 ) {
 
     @Transactional
-    fun admit(petId: Int, correlationId: String): PetAdmission? {
+    fun admit(
+        petId: Int,
+        correlationId: String,
+        ward: String? = null,
+        cage: String? = null,
+        deviceUuid: String? = null
+    ): PetAdmission? {
         if (adtEvents.existsByCorrelationId(correlationId)) {
             return admissions.findByPetIdAndDischargedAtIsNull(petId)
         }
@@ -36,6 +42,11 @@ class AdmissionService(
         admission.petId = petId
         admission.status = AdmissionStatus.ADMITTED
         admission.admittedAt = Instant.now()
+        // Device/location binding set ONLY on the fresh-admission path — never on an idempotent
+        // replay or an already-active pet, which would silently rewrite a live binding.
+        admission.ward = ward
+        admission.cage = cage
+        admission.deviceUuid = deviceUuid
         admissions.save(admission)
         audit(correlationId, "ADMIT", petId, admission.id)
         seedAlarmLimits(admission.id, petId)
