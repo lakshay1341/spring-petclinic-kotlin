@@ -34,7 +34,7 @@ class AlarmResponseServiceTest {
     @Test
     fun ackStampsAckedByAndDoesNotClose() {
         val a = openAlarm(AlarmLevel.HIGH)
-        given(alarms.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(a)
+        given(alarms.findByAdmissionIdAndState(1, "OPEN")).willReturn(listOf(a))
 
         service.acknowledge(1, "drwho")
 
@@ -48,7 +48,7 @@ class AlarmResponseServiceTest {
     @Test
     fun silenceSetsLeaseForAdvisory() {
         val a = openAlarm(AlarmLevel.LOW)
-        given(alarms.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(a)
+        given(alarms.findByAdmissionIdAndState(1, "OPEN")).willReturn(listOf(a))
 
         service.silence(1, "drwho")
 
@@ -60,7 +60,7 @@ class AlarmResponseServiceTest {
     @Test
     fun silenceRefusedForExtreme() {
         val a = openAlarm(AlarmLevel.EXTREME)
-        given(alarms.findByAdmissionIdAndMetricAndState(1, "HR", "OPEN")).willReturn(a)
+        given(alarms.findByAdmissionIdAndState(1, "OPEN")).willReturn(listOf(a))
 
         service.silence(1, "drwho")
 

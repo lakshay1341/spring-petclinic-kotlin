@@ -18,31 +18,32 @@ class AlarmResponseService(
 ) {
 
     companion object {
-        const val METRIC = "HR"
         val SILENCE_WINDOW: Duration = Duration.ofSeconds(120)
     }
 
     @Transactional
     fun acknowledge(petId: Int, who: String) {
-        openAlarm(petId)?.let {
+        // Ack addresses the PATIENT: stamp every open alarm for the pet (never closes — only the
+        // engine closes on return-to-range).
+        openAlarms(petId).forEach {
             it.ackedBy = who
             it.ackedAt = Instant.now()
-            alarms.save(it) // annotate only; ack never closes the alarm
+            alarms.save(it)
         }
     }
 
     @Transactional
     fun silence(petId: Int, who: String) {
-        openAlarm(petId)?.let {
-            if (it.level == AlarmLevel.EXTREME) return // EXTREME is not silenceable, only acknowledgeable
+        openAlarms(petId).forEach {
+            if (it.level == AlarmLevel.EXTREME) return@forEach // EXTREME is not silenceable, only ackable
             it.silencedUntil = Instant.now().plus(SILENCE_WINDOW)
             it.silencedBy = who
             alarms.save(it)
         }
     }
 
-    private fun openAlarm(petId: Int): AlarmEvent? {
-        val admission = admissions.findByPetIdAndDischargedAtIsNull(petId) ?: return null
-        return admission.id?.let { alarms.findByAdmissionIdAndMetricAndState(it, METRIC, "OPEN") }
+    private fun openAlarms(petId: Int): Collection<AlarmEvent> {
+        val admission = admissions.findByPetIdAndDischargedAtIsNull(petId) ?: return emptyList()
+        return admission.id?.let { alarms.findByAdmissionIdAndState(it, "OPEN") } ?: emptyList()
     }
 }

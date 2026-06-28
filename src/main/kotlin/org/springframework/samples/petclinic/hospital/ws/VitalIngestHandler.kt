@@ -33,7 +33,8 @@ class VitalIngestHandler(
 ) : TextWebSocketHandler() {
 
     companion object {
-        const val HR_CODE = "8867-4" // LOINC heart rate — the only numeric vital ingested in this slice
+        // LOINC code -> metric. The device streams these numeric Observations.
+        val CODES = mapOf("8867-4" to "HR", "2708-6" to "SpO2", "9279-1" to "RR", "8310-5" to "Temp")
         const val ATTR_DEVICE = "deviceUuid"
         const val ATTR_ADMISSION = "admissionId"
     }
@@ -107,10 +108,11 @@ class VitalIngestHandler(
             return
         }
 
-        // Only numeric HR Observations feed the alarm engine. Unknown codes are
-        // ACKed-and-ignored: never error on input we do not model yet.
-        if (code != HR_CODE) {
-            ack(deviceUuid, uuid, "ignored: non-HR code")
+        // Map the LOINC code to a metric. Unknown codes are ACKed-and-ignored: never error on input
+        // we do not model yet.
+        val metric = CODES[code]
+        if (metric == null) {
+            ack(deviceUuid, uuid, "ignored: unknown code")
             return
         }
         val value = node.path("valueQuantity").path("value").asInt()
@@ -122,7 +124,7 @@ class VitalIngestHandler(
         }
 
         try {
-            alarmEngine.ingest(admission, value, uuid)
+            alarmEngine.ingest(admission, metric, value, uuid)
             ack(deviceUuid, uuid, "Observation stored")
         } catch (e: DataIntegrityViolationException) {
             // Duplicate observation id (device resend): the whole ingest transaction rolled back,
