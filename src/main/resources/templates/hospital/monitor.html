@@ -1,30 +1,46 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
-      th:replace="~{fragments/layout :: layout (~{::body},'owners')}">
+      th:replace="~{fragments/layout :: layout (~{::body},'hospital')}">
 <body>
-  <h2>Pet Monitor</h2>
+  <h2>Monitor: <span th:text="${petName} ?: ('pet #' + ${petId})">pet</span></h2>
 
   <div th:if="${admission == null}">
-    <p>No admission for this pet.</p>
-    <form th:action="@{/pets/{petId}/admit(petId=${petId})}" method="post">
-      <button class="btn btn-primary" type="submit">Admit</button>
+    <p>No admission for this pet. Admit and bind a device to start monitoring.</p>
+    <form th:action="@{/pets/{petId}/admit(petId=${petId})}" method="post" class="row g-2">
+      <div class="col-auto"><input class="form-control" name="ward" placeholder="Ward"></div>
+      <div class="col-auto"><input class="form-control" name="cage" placeholder="Cage"></div>
+      <div class="col-auto"><input class="form-control" name="deviceUuid" placeholder="Device UUID"></div>
+      <div class="col-auto"><button class="btn btn-primary" type="submit">Admit</button></div>
     </form>
   </div>
 
   <div th:if="${admission != null}" th:object="${admission}">
     <table class="table table-striped">
       <tr><th>Status</th><td th:text="*{dischargedAt == null} ? 'ADMITTED' : 'DISCHARGED'"></td></tr>
+      <tr><th>Ward / Cage</th><td th:text="(*{ward} ?: '—') + ' / ' + (*{cage} ?: '—')"></td></tr>
+      <tr><th>Device</th><td th:text="*{deviceUuid} ?: 'not bound'"></td></tr>
       <tr><th>Admitted</th><td th:text="*{admittedAt}"></td></tr>
       <tr><th>Discharged</th><td th:text="*{dischargedAt}"></td></tr>
       <tr><th>Heart rate</th><td><span id="hr" th:text="*{latestHeartRate}">—</span> bpm</td></tr>
       <tr><th>Alarm</th><td>
         <span th:if="${alarm == null}">none</span>
-        <span th:if="${alarm != null}" th:text="${alarm.level + ' (HR ' + alarm.triggerValue + ')'}"></span>
+        <span th:if="${alarm != null}">
+          <strong th:text="${alarm.level + ' (HR ' + alarm.triggerValue + ')'}"></strong>
+          <button class="btn btn-sm btn-warning" type="button" onclick="ackAlarm()">Ack</button>
+          <button th:if="${alarm.level.name() != 'EXTREME'}" class="btn btn-sm btn-secondary" type="button" onclick="silenceAlarm()">Silence</button>
+        </span>
       </td></tr>
     </table>
 
+    <form th:if="*{dischargedAt == null}" th:action="@{/hospital/{petId}/device(petId=${petId})}" method="post" class="row g-2 mb-2">
+      <div class="col-auto"><input class="form-control" name="ward" th:value="*{ward}" placeholder="Ward"></div>
+      <div class="col-auto"><input class="form-control" name="cage" th:value="*{cage}" placeholder="Cage"></div>
+      <div class="col-auto"><input class="form-control" name="deviceUuid" th:value="*{deviceUuid}" placeholder="Device UUID"></div>
+      <div class="col-auto"><button class="btn btn-outline-primary" type="submit">Save binding</button></div>
+    </form>
+
     <form th:if="*{dischargedAt == null}" th:action="@{/pets/{petId}/discharge(petId=${petId})}" method="post">
-      <button class="btn btn-primary" type="submit">Discharge</button>
+      <button class="btn btn-danger" type="submit">Discharge</button>
     </form>
 
     <div th:if="*{dischargedAt == null}">
@@ -39,13 +55,14 @@
     <script th:if="*{dischargedAt == null}" th:inline="javascript">
       const petId = [[${petId}]];
 
-      // Latest HR number (kept).
+      async function ackAlarm() { await fetch('/hospital/' + petId + '/alarm/ack', { method: 'POST' }); location.reload(); }
+      async function silenceAlarm() { await fetch('/hospital/' + petId + '/alarm/silence', { method: 'POST' }); location.reload(); }
+
       setInterval(async () => {
         const v = await (await fetch('/hospital/' + petId + '/vitals')).json();
         document.getElementById('hr').textContent = (v.heartRate ?? '—');
       }, 2000);
 
-      // HR trend — real timestamps, gaps drawn as breaks (spanGaps:false).
       const hrPlot = new uPlot({
         width: 600, height: 200,
         series: [{}, { label: 'HR', stroke: 'red', spanGaps: false }],
@@ -57,7 +74,6 @@
       }
       setInterval(pollTrend, 2000); pollTrend();
 
-      // Waveform — freshness-gated: a stale/absent buffer shows NO SIGNAL, never a frozen trace.
       const wavePlot = new uPlot({
         width: 600, height: 200,
         series: [{}, { label: 'wave', stroke: 'blue' }],
